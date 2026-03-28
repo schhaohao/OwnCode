@@ -1,5 +1,8 @@
 com/claudecode/tool/ToolResultTest.class
+com/claudecode/tool/ToolRegistryTest.class
 com/claudecode/api/model/ToolDefinitionTest.class
+com/claudecode/tool/ToolRegistryTest$1.class
+com/claudecode/tool/ToolRegistryTest$2.class
 com/claudecode/api/model/MessageTest.class
 com/claudecode/tool/impl/BashToolTest.class
 com/claudecode/api/model/ApiRequestTest.class

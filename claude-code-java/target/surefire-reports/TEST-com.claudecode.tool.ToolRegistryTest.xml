@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.claudecode.tool.impl.ReadFileToolTest" time="0.049" tests="13" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.claudecode.tool.ToolRegistryTest" time="0.036" tests="10" errors="0" skipped="0" failures="0">
   <properties>
     <property name="gopherProxySet" value="false"/>
     <property name="awt.toolkit" value="sun.lwawt.macosx.LWCToolkit"/>
-    <property name="http.proxyHost" value="127.0.0.1"/>
     <property name="java.specification.version" value="11"/>
     <property name="sun.cpu.isalist" value=""/>
     <property name="sun.jnu.encoding" value="UTF-8"/>
     <property name="java.class.path" value="/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/target/test-classes:/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/target/classes:/Users/sunchenhao/.m2/repository/com/squareup/okhttp3/okhttp/4.12.0/okhttp-4.12.0.jar:/Users/sunchenhao/.m2/repository/com/squareup/okio/okio/3.6.0/okio-3.6.0.jar:/Users/sunchenhao/.m2/repository/com/squareup/okio/okio-jvm/3.6.0/okio-jvm-3.6.0.jar:/Users/sunchenhao/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-common/1.9.10/kotlin-stdlib-common-1.9.10.jar:/Users/sunchenhao/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.8.21/kotlin-stdlib-jdk8-1.8.21.jar:/Users/sunchenhao/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib/1.8.21/kotlin-stdlib-1.8.21.jar:/Users/sunchenhao/.m2/repository/org/jetbrains/annotations/13.0/annotations-13.0.jar:/Users/sunchenhao/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.8.21/kotlin-stdlib-jdk7-1.8.21.jar:/Users/sunchenhao/.m2/repository/com/squareup/okhttp3/okhttp-sse/4.12.0/okhttp-sse-4.12.0.jar:/Users/sunchenhao/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.17.0/jackson-databind-2.17.0.jar:/Users/sunchenhao/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.17.0/jackson-annotations-2.17.0.jar:/Users/sunchenhao/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.17.0/jackson-core-2.17.0.jar:/Users/sunchenhao/.m2/repository/net/bytebuddy/byte-buddy/1.14.9/byte-buddy-1.14.9.jar:/Users/sunchenhao/.m2/repository/org/jline/jline/3.25.1/jline-3.25.1.jar:/Users/sunchenhao/.m2/repository/org/junit/jupiter/junit-jupiter/5.10.2/junit-jupiter-5.10.2.jar:/Users/sunchenhao/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.10.2/junit-jupiter-api-5.10.2.jar:/Users/sunchenhao/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/Users/sunchenhao/.m2/repository/org/junit/platform/junit-platform-commons/1.10.2/junit-platform-commons-1.10.2.jar:/Users/sunchenhao/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/Users/sunchenhao/.m2/repository/org/junit/jupiter/junit-jupiter-params/5.10.2/junit-jupiter-params-5.10.2.jar:/Users/sunchenhao/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.10.2/junit-jupiter-engine-5.10.2.jar:/Users/sunchenhao/.m2/repository/org/junit/platform/junit-platform-engine/1.10.2/junit-platform-engine-1.10.2.jar:"/>
-    <property name="https.proxyPort" value="1082"/>
     <property name="java.vm.vendor" value="Eclipse Adoptium"/>
     <property name="sun.arch.data.model" value="64"/>
     <property name="java.vendor.url" value="https://adoptium.net/"/>
@@ -18,10 +16,10 @@
     <property name="sun.java.launcher" value="SUN_STANDARD"/>
     <property name="user.country" value="CN"/>
     <property name="sun.boot.library.path" value="/Users/sunchenhao/.sdkman/candidates/java/11.0.20-tem/lib"/>
-    <property name="sun.java.command" value="/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/target/surefire/surefirebooter-20260328163031785_3.jar /Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/target/surefire 2026-03-28T16-30-31_742-jvmRun1 surefire-20260328163031785_1tmp surefire_0-20260328163031785_2tmp"/>
-    <property name="http.nonProxyHosts" value="202.117.112.14.dns|*.202.117.112.14.dns|captive.apple.com|*.captive.apple.com|202.117.112.13.dns|*.202.117.112.13.dns|localhost|*.localhost|10.0.0.0/8|*.10.0.0.0/8|local|*.local|172.16.0.0/12|*.172.16.0.0/12|198.18.0.0/15|*.198.18.0.0/15|192.168.0.0/16|*.192.168.0.0/16"/>
+    <property name="sun.java.command" value="/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/target/surefire/surefirebooter-20260328204931442_3.jar /Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/target/surefire 2026-03-28T20-49-31_396-jvmRun1 surefire-20260328204931442_1tmp surefire_0-20260328204931442_2tmp"/>
+    <property name="http.nonProxyHosts" value="127.0.0.1|192.168.0.0/16|*.192.168.0.0/16|10.0.0.0/8|*.10.0.0.0/8|172.16.0.0/12|*.172.16.0.0/12|172.29.0.0/16|*.172.29.0.0/16|localhost|*.localhost|local|*.local|crashlytics.com|*.crashlytics.com|&lt;local&gt;|*.&lt;local&gt;"/>
     <property name="jdk.debug" value="release"/>
-    <property name="test" value="ReadFileToolTest"/>
+    <property name="test" value="ToolRegistryTest"/>
     <property name="surefire.test.class.path" value="/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/target/test-classes:/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/target/classes:/Users/sunchenhao/.m2/repository/com/squareup/okhttp3/okhttp/4.12.0/okhttp-4.12.0.jar:/Users/sunchenhao/.m2/repository/com/squareup/okio/okio/3.6.0/okio-3.6.0.jar:/Users/sunchenhao/.m2/repository/com/squareup/okio/okio-jvm/3.6.0/okio-jvm-3.6.0.jar:/Users/sunchenhao/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-common/1.9.10/kotlin-stdlib-common-1.9.10.jar:/Users/sunchenhao/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.8.21/kotlin-stdlib-jdk8-1.8.21.jar:/Users/sunchenhao/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib/1.8.21/kotlin-stdlib-1.8.21.jar:/Users/sunchenhao/.m2/repository/org/jetbrains/annotations/13.0/annotations-13.0.jar:/Users/sunchenhao/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.8.21/kotlin-stdlib-jdk7-1.8.21.jar:/Users/sunchenhao/.m2/repository/com/squareup/okhttp3/okhttp-sse/4.12.0/okhttp-sse-4.12.0.jar:/Users/sunchenhao/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.17.0/jackson-databind-2.17.0.jar:/Users/sunchenhao/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.17.0/jackson-annotations-2.17.0.jar:/Users/sunchenhao/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.17.0/jackson-core-2.17.0.jar:/Users/sunchenhao/.m2/repository/net/bytebuddy/byte-buddy/1.14.9/byte-buddy-1.14.9.jar:/Users/sunchenhao/.m2/repository/org/jline/jline/3.25.1/jline-3.25.1.jar:/Users/sunchenhao/.m2/repository/org/junit/jupiter/junit-jupiter/5.10.2/junit-jupiter-5.10.2.jar:/Users/sunchenhao/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.10.2/junit-jupiter-api-5.10.2.jar:/Users/sunchenhao/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/Users/sunchenhao/.m2/repository/org/junit/platform/junit-platform-commons/1.10.2/junit-platform-commons-1.10.2.jar:/Users/sunchenhao/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/Users/sunchenhao/.m2/repository/org/junit/jupiter/junit-jupiter-params/5.10.2/junit-jupiter-params-5.10.2.jar:/Users/sunchenhao/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.10.2/junit-jupiter-engine-5.10.2.jar:/Users/sunchenhao/.m2/repository/org/junit/platform/junit-platform-engine/1.10.2/junit-platform-engine-1.10.2.jar:"/>
     <property name="sun.cpu.endian" value="little"/>
     <property name="user.home" value="/Users/sunchenhao"/>
@@ -30,17 +28,16 @@
     <property name="java.version.date" value="2023-07-18"/>
     <property name="java.home" value="/Users/sunchenhao/.sdkman/candidates/java/11.0.20-tem"/>
     <property name="file.separator" value="/"/>
-    <property name="https.proxyHost" value="127.0.0.1"/>
     <property name="basedir" value="/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java"/>
     <property name="java.vm.compressedOopsMode" value="Zero based"/>
     <property name="line.separator" value="&#10;"/>
     <property name="java.specification.name" value="Java Platform API Specification"/>
     <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
     <property name="java.awt.graphicsenv" value="sun.awt.CGraphicsEnvironment"/>
-    <property name="surefire.real.class.path" value="/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/target/surefire/surefirebooter-20260328163031785_3.jar"/>
+    <property name="surefire.real.class.path" value="/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/target/surefire/surefirebooter-20260328204931442_3.jar"/>
     <property name="user.script" value="Hans"/>
     <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
-    <property name="ftp.nonProxyHosts" value="202.117.112.14.dns|*.202.117.112.14.dns|captive.apple.com|*.captive.apple.com|202.117.112.13.dns|*.202.117.112.13.dns|localhost|*.localhost|10.0.0.0/8|*.10.0.0.0/8|local|*.local|172.16.0.0/12|*.172.16.0.0/12|198.18.0.0/15|*.198.18.0.0/15|192.168.0.0/16|*.192.168.0.0/16"/>
+    <property name="ftp.nonProxyHosts" value="127.0.0.1|192.168.0.0/16|*.192.168.0.0/16|10.0.0.0/8|*.10.0.0.0/8|172.16.0.0/12|*.172.16.0.0/12|172.29.0.0/16|*.172.29.0.0/16|localhost|*.localhost|local|*.local|crashlytics.com|*.crashlytics.com|&lt;local&gt;|*.&lt;local&gt;"/>
     <property name="java.runtime.version" value="11.0.20+8"/>
     <property name="user.name" value="sunchenhao"/>
     <property name="path.separator" value=":"/>
@@ -65,20 +62,16 @@
     <property name="java.specification.maintenance.version" value="2"/>
     <property name="sun.io.unicode.encoding" value="UnicodeBig"/>
     <property name="java.class.version" value="55.0"/>
-    <property name="socksNonProxyHosts" value="202.117.112.14.dns|*.202.117.112.14.dns|captive.apple.com|*.captive.apple.com|202.117.112.13.dns|*.202.117.112.13.dns|localhost|*.localhost|10.0.0.0/8|*.10.0.0.0/8|local|*.local|172.16.0.0/12|*.172.16.0.0/12|198.18.0.0/15|*.198.18.0.0/15|192.168.0.0/16|*.192.168.0.0/16"/>
-    <property name="http.proxyPort" value="1082"/>
+    <property name="socksNonProxyHosts" value="127.0.0.1|192.168.0.0/16|*.192.168.0.0/16|10.0.0.0/8|*.10.0.0.0/8|172.16.0.0/12|*.172.16.0.0/12|172.29.0.0/16|*.172.29.0.0/16|localhost|*.localhost|local|*.local|crashlytics.com|*.crashlytics.com|&lt;local&gt;|*.&lt;local&gt;"/>
   </properties>
-  <testcase name="requiresPermission_shouldReturnFalse" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.015"/>
-  <testcase name="inputSchema_shouldContainFilePathRequired" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.002"/>
-  <testcase name="execute_normalFile_shouldReturnContentWithLineNumbers" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.005"/>
-  <testcase name="execute_offsetBeyondFileLength_shouldReturnMessage" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.005"/>
-  <testcase name="execute_withOffsetAndLimit" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.001"/>
-  <testcase name="execute_directoryPath_shouldReturnError" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.001"/>
-  <testcase name="execute_missingFilePath_shouldReturnError" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.0"/>
-  <testcase name="execute_fileNotFound_shouldReturnError" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.0"/>
-  <testcase name="name_shouldReturnRead" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.0"/>
-  <testcase name="execute_withOffset_shouldStartFromSpecifiedLine" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.001"/>
-  <testcase name="execute_emptyFile_shouldReturnEmptyMessage" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.001"/>
-  <testcase name="execute_lineNumberFormat_shouldBeRightAligned" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.001"/>
-  <testcase name="execute_withLimit_shouldLimitLineCount" classname="com.claudecode.tool.impl.ReadFileToolTest" time="0.001"/>
+  <testcase name="execute_toolThrowsException_shouldCatchAndReturnError" classname="com.claudecode.tool.ToolRegistryTest" time="0.014"/>
+  <testcase name="register_andGetTool" classname="com.claudecode.tool.ToolRegistryTest" time="0.002"/>
+  <testcase name="register_duplicateName_shouldThrow" classname="com.claudecode.tool.ToolRegistryTest" time="0.002"/>
+  <testcase name="getAllDefinitions_empty_shouldReturnEmptyList" classname="com.claudecode.tool.ToolRegistryTest" time="0.0"/>
+  <testcase name="execute_existingTool_shouldReturnResult" classname="com.claudecode.tool.ToolRegistryTest" time="0.0"/>
+  <testcase name="registerBuiltinTools_stubToolsShouldBeSkipped" classname="com.claudecode.tool.ToolRegistryTest" time="0.002"/>
+  <testcase name="getTool_notFound_shouldReturnNull" classname="com.claudecode.tool.ToolRegistryTest" time="0.0"/>
+  <testcase name="execute_unknownTool_shouldReturnError" classname="com.claudecode.tool.ToolRegistryTest" time="0.0"/>
+  <testcase name="getAllDefinitions_shouldConvertAllTools" classname="com.claudecode.tool.ToolRegistryTest" time="0.0"/>
+  <testcase name="registerBuiltinTools_shouldRegisterImplementedTools" classname="com.claudecode.tool.ToolRegistryTest" time="0.001"/>
 </testsuite>

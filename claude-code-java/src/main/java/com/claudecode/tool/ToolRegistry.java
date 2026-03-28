@@ -1,5 +1,13 @@
 package com.claudecode.tool;
 
+import com.claudecode.api.model.ToolDefinition;
+import com.claudecode.tool.impl.*;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
  * ToolRegistry — 工具注册中心
  *
@@ -40,8 +48,107 @@ package com.claudecode.tool;
  * 内部存储：
  *   private Map<String, Tool> tools = new LinkedHashMap<>();
  *   （用 LinkedHashMap 保持注册顺序，序列化到 API 时顺序稳定）
+ *
+ * @author sunchenhao
+ * @date 2026/3/28
  */
 public class ToolRegistry {
 
-    // TODO: 实现
+    /**
+     * 工具存储：name → Tool 实例
+     * 用 LinkedHashMap 保持注册顺序，序列化到 API 的 tools 数组时顺序稳定
+     */
+    private final Map<String, Tool> tools = new LinkedHashMap<>();
+
+    /** 工作目录，BashTool 等需要 */
+    private final String workingDirectory;
+
+    public ToolRegistry(String workingDirectory) {
+        this.workingDirectory = workingDirectory;
+    }
+
+    /**
+     * 注册一个工具
+     *
+     * @throws IllegalArgumentException 如果同名工具已存在（防止配置错误）
+     */
+    public void register(Tool tool) {
+        String name = tool.name();
+        if (tools.containsKey(name)) {
+            throw new IllegalArgumentException("Tool already registered: " + name);
+        }
+        tools.put(name, tool);
+    }
+
+    /**
+     * 根据名称查找工具
+     *
+     * @return 工具实例，找不到时返回 null
+     */
+    public Tool getTool(String name) {
+        return tools.get(name);
+    }
+
+    /**
+     * 便捷方法：查找工具 + 执行
+     *
+     * 封装了两层安全保护：
+     * 1. 工具不存在 → 返回 error（LLM 会据此调整策略）
+     * 2. 执行抛异常 → 捕获并返回 error（不让异常传播到 AgentLoop）
+     */
+    public ToolResult execute(String toolName, Map<String, Object> input) {
+        Tool tool = tools.get(toolName);
+        if (tool == null) {
+            return ToolResult.error("Unknown tool: " + toolName);
+        }
+        try {
+            return tool.execute(input);
+        } catch (Exception e) {
+            return ToolResult.error("Tool '" + toolName + "' threw exception: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 返回所有已注册工具的 ToolDefinition 列表
+     *
+     * 使用场景：AgentLoop 构建 API 请求时
+     *   ApiRequest.builder()
+     *       .tools(toolRegistry.getAllDefinitions())
+     *       ...
+     */
+    public List<ToolDefinition> getAllDefinitions() {
+        return tools.values().stream()
+                .map(ToolDefinition::fromTool)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 注册所有内置工具
+     *
+     * 只注册已实现的工具（name 非空的）；
+     * 未完成的工具（name 为空）跳过，避免注册空名工具
+     */
+    public void registerBuiltinTools() {
+        registerIfReady(new ReadFileTool());
+        registerIfReady(new BashTool(workingDirectory));
+        registerIfReady(new EditFileTool());
+        registerIfReady(new WriteFileTool());
+        registerIfReady(new GlobTool());
+        registerIfReady(new GrepTool());
+    }
+
+    /**
+     * 只在工具已实现（name 非空）时注册
+     * 未完成的工具 stub 返回空字符串 name，跳过即可
+     */
+    private void registerIfReady(Tool tool) {
+        if (tool.name() != null && !tool.name().isEmpty()) {
+            register(tool);
+        }
+    }
+
+    /** 已注册工具数量 */
+    public int size() {
+        return tools.size();
+    }
 }
