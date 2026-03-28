@@ -1,5 +1,13 @@
 package com.claudecode.api.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
  * ApiResponse — Claude API 响应体模型
  *
@@ -50,8 +58,216 @@ package com.claudecode.api.model;
  * Jackson 反序列化注意：
  * - stop_reason → stopReason: @JsonProperty("stop_reason")
  * - input_tokens → inputTokens: 嵌套对象也需要映射
+ *
+ * @author sunchenhao
+ * @date 2026/3/28
  */
+@JsonIgnoreProperties(ignoreUnknown = true)  // API 可能返回额外字段（如 type），忽略即可
 public class ApiResponse {
 
-    // TODO: 实现（建议包含一个 static Builder 内部类）
+    @JsonProperty("id")
+    private final String id;
+
+    @JsonProperty("role")
+    private final String role;
+
+    @JsonProperty("model")
+    private final String model;
+
+    @JsonProperty("content")
+    private final List<ContentBlock> content;
+
+    /** stopReason → "stop_reason"：AgentLoop 循环的核心判断依据 */
+    @JsonProperty("stop_reason")
+    private final String stopReason;
+
+    @JsonProperty("usage")
+    private final Usage usage;
+
+    // ==================== 构造函数 ====================
+
+    /**
+     * Jackson 反序列化构造函数（非流式 API 场景）
+     */
+    @JsonCreator
+    public ApiResponse(
+            @JsonProperty("id") String id,
+            @JsonProperty("role") String role,
+            @JsonProperty("model") String model,
+            @JsonProperty("content") List<ContentBlock> content,
+            @JsonProperty("stop_reason") String stopReason,
+            @JsonProperty("usage") Usage usage) {
+        this.id = id;
+        this.role = role;
+        this.model = model;
+        this.content = content != null ? content : new ArrayList<>();
+        this.stopReason = stopReason;
+        this.usage = usage;
+    }
+
+    /**
+     * Builder 构造函数（StreamAssembler 流式组装场景）
+     */
+    private ApiResponse(Builder builder) {
+        this.id = builder.id;
+        this.role = builder.role;
+        this.model = builder.model;
+        this.content = builder.content;
+        this.stopReason = builder.stopReason;
+        this.usage = builder.usage;
+    }
+
+    // ==================== 便捷方法 ====================
+
+    /**
+     * 转为 Message 对象，用于追加到 ConversationHistory
+     *
+     * 使用场景：AgentLoop 收到响应后
+     *   history.addAssistantMessage(response.toMessage());
+     */
+    public Message toMessage() {
+        return Message.assistantFromBlocks(content);
+    }
+
+    /**
+     * 过滤出所有 tool_use 类型的 block
+     *
+     * 使用场景：AgentLoop 提取工具调用请求
+     *   for (ContentBlock block : response.getToolUseBlocks()) {
+     *       ToolUseBlock toolUse = (ToolUseBlock) block;
+     *       toolRegistry.execute(toolUse.getName(), toolUse.getInput());
+     *   }
+     */
+    public List<ContentBlock> getToolUseBlocks() {
+        return content.stream()
+                .filter(block -> block instanceof ToolUseBlock)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 拼接所有 text block 的文本内容
+     */
+    public String getTextContent() {
+        return content.stream()
+                .filter(block -> block instanceof TextBlock)
+                .map(block -> ((TextBlock) block).getText())
+                .collect(Collectors.joining());
+    }
+
+    /**
+     * AgentLoop 最关键的判断：是否需要执行工具
+     *
+     * true  → 继续循环：执行工具，把结果喂回 LLM
+     * false → 退出循环：输出文本，等待用户下一轮输入
+     */
+    public boolean hasToolUse() {
+        return "tool_use".equals(stopReason);
+    }
+
+    // ==================== Getter ====================
+
+    public String getId() { return id; }
+    public String getRole() { return role; }
+    public String getModel() { return model; }
+    public List<ContentBlock> getContent() { return content; }
+    public String getStopReason() { return stopReason; }
+    public Usage getUsage() { return usage; }
+
+    // ==================== Usage 嵌套类 ====================
+
+    /**
+     * Token 使用统计
+     *
+     * JSON 格式：
+     *   { "input_tokens": 2500, "output_tokens": 150 }
+     *
+     * 嵌套对象的字段名同样需要 @JsonProperty 映射
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Usage {
+
+        @JsonProperty("input_tokens")
+        private final int inputTokens;
+
+        @JsonProperty("output_tokens")
+        private final int outputTokens;
+
+        @JsonCreator
+        public Usage(
+                @JsonProperty("input_tokens") int inputTokens,
+                @JsonProperty("output_tokens") int outputTokens) {
+            this.inputTokens = inputTokens;
+            this.outputTokens = outputTokens;
+        }
+
+        public int getInputTokens() { return inputTokens; }
+        public int getOutputTokens() { return outputTokens; }
+    }
+
+    // ==================== Builder ====================
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /**
+     * Builder 模式 — StreamAssembler 在 SSE 事件流中逐步构建 ApiResponse
+     *
+     * 流程：
+     *   Builder builder = ApiResponse.builder();
+     *   // message_start 事件 → 设置 id, model
+     *   builder.id("msg_xxx").model("claude-sonnet-4-6");
+     *   // content_block_stop 事件 → 添加已完成的 block
+     *   builder.addContentBlock(new TextBlock("hello"));
+     *   builder.addContentBlock(new ToolUseBlock(...));
+     *   // message_delta 事件 → 设置 stopReason 和 usage
+     *   builder.stopReason("tool_use").usage(new Usage(2500, 150));
+     *   // message_stop 事件 → 构建完成
+     *   ApiResponse response = builder.build();
+     */
+    public static class Builder {
+        private String id;
+        private String role = "assistant";
+        private String model;
+        private List<ContentBlock> content = new ArrayList<>();
+        private String stopReason;
+        private Usage usage;
+
+        public Builder id(String id) {
+            this.id = id;
+            return this;
+        }
+
+        public Builder role(String role) {
+            this.role = role;
+            return this;
+        }
+
+        public Builder model(String model) {
+            this.model = model;
+            return this;
+        }
+
+        /**
+         * 添加一个已完成的 content block（由 StreamAssembler 在 content_block_stop 时调用）
+         */
+        public Builder addContentBlock(ContentBlock block) {
+            this.content.add(block);
+            return this;
+        }
+
+        public Builder stopReason(String stopReason) {
+            this.stopReason = stopReason;
+            return this;
+        }
+
+        public Builder usage(Usage usage) {
+            this.usage = usage;
+            return this;
+        }
+
+        public ApiResponse build() {
+            return new ApiResponse(this);
+        }
+    }
 }

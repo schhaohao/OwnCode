@@ -1,5 +1,9 @@
 package com.claudecode.api.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import java.util.Map;
+
 /**
  * ToolDefinition — 工具定义模型（传给 API 的工具描述）
  *
@@ -51,8 +55,59 @@ package com.claudecode.api.model;
  * 提示：
  * - 每个 Tool 实现类可以提供一个 toDefinition() 方法返回 ToolDefinition
  * - 或者 ToolRegistry 负责从 Tool 接口的 name/description/inputSchema 方法构建
+ *
+ * @author sunchenhao
+ * @date 2026/3/28
  */
 public class ToolDefinition {
 
-    // TODO: 实现
+    @JsonProperty("name")
+    private final String name;
+
+    @JsonProperty("description")
+    private final String description;
+
+    /**
+     * JSON Schema 格式的输入参数定义
+     *
+     * Java 字段名 inputSchema → JSON 字段名 "input_schema"（API 要求下划线风格）
+     * 结构示例：
+     *   {
+     *     "type": "object",
+     *     "properties": { "command": {"type":"string","description":"..."} },
+     *     "required": ["command"]
+     *   }
+     */
+    @JsonProperty("input_schema")
+    private final Map<String, Object> inputSchema;
+
+    public ToolDefinition(String name, String description, Map<String, Object> inputSchema) {
+        this.name = name;
+        this.description = description;
+        this.inputSchema = inputSchema;
+    }
+
+    /**
+     * 从 Tool 接口实例构建 ToolDefinition
+     *
+     * 使用场景：ToolRegistry.getAllDefinitions() 中批量转换
+     *   tools.values().stream()
+     *       .map(ToolDefinition::fromTool)
+     *       .collect(Collectors.toList());
+     */
+    public static ToolDefinition fromTool(com.claudecode.tool.Tool tool) {
+        return new ToolDefinition(tool.name(), tool.description(), tool.inputSchema());
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public Map<String, Object> getInputSchema() {
+        return inputSchema;
+    }
 }

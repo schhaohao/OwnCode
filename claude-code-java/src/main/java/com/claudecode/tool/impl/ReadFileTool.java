@@ -1,5 +1,17 @@
 package com.claudecode.tool.impl;
 
+import com.claudecode.tool.Tool;
+import com.claudecode.tool.ToolResult;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * ReadFileTool — 文件读取工具
  *
@@ -63,32 +75,142 @@ package com.claudecode.tool.impl;
  * - 二进制文件：检测到非文本内容时返回提示
  * - 编码问题：默认 UTF-8，异常时尝试其他编码或返回错误
  * - 超大文件：即使 limit=2000，也要控制总输出大小
+ *
+ * @author sunchenhao
+ * @date 2026/3/28
  */
-public class ReadFileTool implements com.claudecode.tool.Tool {
+public class ReadFileTool implements Tool {
+
+    /** 默认起始行号（1-based） */
+    private static final int DEFAULT_OFFSET = 1;
+
+    /** 默认最多读取行数 */
+    private static final int DEFAULT_LIMIT = 2000;
+
+    /** 输出最大字符数：200KB，防止撑爆上下文窗口 */
+    private static final int MAX_OUTPUT_LENGTH = 200 * 1024;
+
     @Override
     public String name() {
-        return "";
+        return "Read";
     }
 
     @Override
     public String description() {
-        return "";
+        return "Reads a file from the local filesystem and returns its content with line numbers. "
+                + "The file_path must be an absolute path. "
+                + "Use offset and limit to read specific portions of large files. "
+                + "Results are returned in cat -n format with line numbers starting at 1.";
     }
 
     @Override
-    public java.util.Map<String, Object> inputSchema() {
-        return java.util.Map.of();
+    public Map<String, Object> inputSchema() {
+        Map<String, Object> filePathProp = new LinkedHashMap<>();
+        filePathProp.put("type", "string");
+        filePathProp.put("description", "The absolute path to the file to read");
+
+        Map<String, Object> offsetProp = new LinkedHashMap<>();
+        offsetProp.put("type", "integer");
+        offsetProp.put("description", "The line number to start reading from (1-based), default 1");
+
+        Map<String, Object> limitProp = new LinkedHashMap<>();
+        limitProp.put("type", "integer");
+        limitProp.put("description", "Maximum number of lines to read, default 2000");
+
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("file_path", filePathProp);
+        properties.put("offset", offsetProp);
+        properties.put("limit", limitProp);
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", List.of("file_path"));
+
+        return schema;
     }
 
     @Override
     public boolean requiresPermission() {
+        // 只读操作，无需用户审批
         return false;
     }
 
     @Override
-    public com.claudecode.tool.ToolResult execute(java.util.Map<String, Object> input) {
-        return null;
-    }
+    public ToolResult execute(Map<String, Object> input) {
+        // ——— 第1步：提取参数 ———
+        String filePath = (String) input.get("file_path");
+        if (filePath == null || filePath.isBlank()) {
+            return ToolResult.error("Parameter 'file_path' is required");
+        }
 
-    // TODO: 实现 Tool 接口的所有方法
+        int offset = DEFAULT_OFFSET;
+        Object offsetObj = input.get("offset");
+        if (offsetObj instanceof Number) {
+            offset = ((Number) offsetObj).intValue();
+            if (offset < 1) offset = 1;  // 行号最小为1
+        }
+
+        int limit = DEFAULT_LIMIT;
+        Object limitObj = input.get("limit");
+        if (limitObj instanceof Number) {
+            limit = ((Number) limitObj).intValue();
+            if (limit < 1) limit = 1;
+        }
+
+        // ——— 第2步：校验文件路径 ———
+        Path path = Paths.get(filePath);
+
+        if (!Files.exists(path)) {
+            return ToolResult.error("File not found: " + filePath);
+        }
+
+        if (Files.isDirectory(path)) {
+            return ToolResult.error("Path is a directory, not a file: " + filePath);
+        }
+
+        // ——— 第3步：读取文件 ———
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(path, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            // 编码异常（如二进制文件用 UTF-8 读取失败）
+            return ToolResult.error("Failed to read file (possibly binary or encoding issue): " + e.getMessage());
+        }
+
+        // ——— 第4步：处理空文件 ———
+        if (lines.isEmpty()) {
+            return ToolResult.success("File is empty: " + filePath);
+        }
+
+        // ——— 第5步：按 offset/limit 截取并格式化 ———
+        // offset 是 1-based，转为 0-based 数组索引
+        int startIndex = offset - 1;
+        int endIndex = Math.min(startIndex + limit, lines.size());
+
+        // offset 超出文件范围
+        if (startIndex >= lines.size()) {
+            return ToolResult.success("Offset " + offset + " is beyond file length (" + lines.size() + " lines)");
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = startIndex; i < endIndex; i++) {
+            // 模拟 cat -n 格式：行号右对齐6位 + tab + 行内容
+            sb.append(String.format("%6d\t%s", i + 1, lines.get(i)));
+
+            // 除了最后一行，每行后面加换行符
+            if (i < endIndex - 1) {
+                sb.append("\n");
+            }
+
+            // 输出截断保护
+            if (sb.length() > MAX_OUTPUT_LENGTH) {
+                sb.append("\n... (output truncated, exceeded ")
+                        .append(MAX_OUTPUT_LENGTH / 1024).append("KB)");
+                break;
+            }
+        }
+
+        return ToolResult.success(sb.toString());
+    }
 }

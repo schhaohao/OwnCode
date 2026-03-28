@@ -1,4 +1,8 @@
 com/claudecode/tool/ToolResultTest.class
+com/claudecode/api/model/ToolDefinitionTest.class
 com/claudecode/api/model/MessageTest.class
 com/claudecode/tool/impl/BashToolTest.class
+com/claudecode/api/model/ApiRequestTest.class
 com/claudecode/api/model/ContentBlockTest.class
+com/claudecode/api/model/ApiResponseTest.class
+com/claudecode/tool/impl/ReadFileToolTest.class
