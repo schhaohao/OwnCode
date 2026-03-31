@@ -1,9 +1,0 @@
-/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/src/test/java/com/claudecode/api/model/ApiRequestTest.java
-/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/src/test/java/com/claudecode/api/model/ApiResponseTest.java
-/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/src/test/java/com/claudecode/api/model/ContentBlockTest.java
-/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/src/test/java/com/claudecode/api/model/MessageTest.java
-/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/src/test/java/com/claudecode/api/model/ToolDefinitionTest.java
-/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/src/test/java/com/claudecode/tool/ToolRegistryTest.java
-/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/src/test/java/com/claudecode/tool/ToolResultTest.java
-/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/src/test/java/com/claudecode/tool/impl/BashToolTest.java
-/Users/sunchenhao/Documents/Workspace1/Java_projects/OwnCode/claude-code-java/src/test/java/com/claudecode/tool/impl/ReadFileToolTest.java

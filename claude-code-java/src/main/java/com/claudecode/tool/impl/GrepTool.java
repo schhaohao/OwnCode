@@ -1,5 +1,17 @@
 package com.claudecode.tool.impl;
 
+import com.claudecode.tool.Tool;
+import com.claudecode.tool.ToolResult;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 /**
  * GrepTool — 文件内容搜索工具
  *
@@ -72,20 +84,56 @@ package com.claudecode.tool.impl;
  *   解析它们的输出即可。这样性能更好且自动处理了二进制文件跳过等问题。
  *   但注意不同系统上的可用性差异。
  */
-public class GrepTool implements com.claudecode.tool.Tool {
+public class GrepTool implements Tool {
+
+    /** Maximum number of matching lines to return */
+    private static final int MAX_MATCHES = 500;
+
+    /** Skip files larger than 1MB */
+    private static final long MAX_FILE_SIZE = 1024 * 1024;
+
+    /** Directories to skip during search */
+    private static final Set<String> SKIP_DIRS = Set.of(
+            ".git", "node_modules", "target", "build", ".idea", "__pycache__", ".gradle");
+
     @Override
     public String name() {
-        return "";
+        return "Grep";
     }
 
     @Override
     public String description() {
-        return "";
+        return "Searches file contents using regex patterns, similar to ripgrep. "
+                + "Returns matching lines with file paths and line numbers. "
+                + "Supports filtering by file glob pattern. "
+                + "Use this when you need to search for code patterns, function definitions, "
+                + "or specific text across the codebase.";
     }
 
     @Override
-    public java.util.Map<String, Object> inputSchema() {
-        return java.util.Map.of();
+    public Map<String, Object> inputSchema() {
+        Map<String, Object> patternProp = new LinkedHashMap<>();
+        patternProp.put("type", "string");
+        patternProp.put("description", "Regex pattern to search for");
+
+        Map<String, Object> pathProp = new LinkedHashMap<>();
+        pathProp.put("type", "string");
+        pathProp.put("description", "File or directory to search in (default: current working directory)");
+
+        Map<String, Object> globProp = new LinkedHashMap<>();
+        globProp.put("type", "string");
+        globProp.put("description", "File filter pattern, e.g. '*.java', '*.{ts,tsx}'");
+
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("pattern", patternProp);
+        properties.put("path", pathProp);
+        properties.put("glob", globProp);
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", List.of("pattern"));
+        return schema;
     }
 
     @Override
@@ -94,9 +142,131 @@ public class GrepTool implements com.claudecode.tool.Tool {
     }
 
     @Override
-    public com.claudecode.tool.ToolResult execute(java.util.Map<String, Object> input) {
-        return null;
+    public ToolResult execute(Map<String, Object> input) {
+        String patternStr = (String) input.get("pattern");
+        if (patternStr == null || patternStr.isBlank()) {
+            return ToolResult.error("Parameter 'pattern' is required");
+        }
+
+        Pattern regex;
+        try {
+            regex = Pattern.compile(patternStr);
+        } catch (Exception e) {
+            return ToolResult.error("Invalid regex pattern: " + e.getMessage());
+        }
+
+        String pathStr = (String) input.get("path");
+        Path searchPath;
+        try {
+            searchPath = pathStr != null ? Paths.get(pathStr) : Paths.get(System.getProperty("user.dir"));
+        } catch (Exception e) {
+            return ToolResult.error("Invalid path: " + e.getMessage());
+        }
+
+        String globPattern = (String) input.get("glob");
+        PathMatcher globMatcher = globPattern != null
+                ? FileSystems.getDefault().getPathMatcher("glob:" + globPattern)
+                : null;
+
+        List<String> results = new ArrayList<>();
+
+        try {
+            if (Files.isRegularFile(searchPath)) {
+                // Search single file
+                searchFile(searchPath, searchPath.getParent(), regex, results);
+            } else if (Files.isDirectory(searchPath)) {
+                // Recursive search
+                Path root = searchPath;
+                Files.walkFileTree(searchPath, new SimpleFileVisitor<Path>() {
+                    @Override
+                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                        String dirName = dir.getFileName() != null ? dir.getFileName().toString() : "";
+                        if (SKIP_DIRS.contains(dirName)) {
+                            return FileVisitResult.SKIP_SUBTREE;
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                        if (results.size() >= MAX_MATCHES) {
+                            return FileVisitResult.TERMINATE;
+                        }
+                        // Skip large files
+                        if (attrs.size() > MAX_FILE_SIZE) {
+                            return FileVisitResult.CONTINUE;
+                        }
+                        // Apply glob filter
+                        if (globMatcher != null && !globMatcher.matches(root.relativize(file))) {
+                            return FileVisitResult.CONTINUE;
+                        }
+                        searchFile(file, root, regex, results);
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } else {
+                return ToolResult.error("Path not found: " + searchPath);
+            }
+        } catch (Exception e) {
+            return ToolResult.error("Search failed: " + e.getMessage());
+        }
+
+        if (results.isEmpty()) {
+            return ToolResult.success("No matches found for pattern: " + patternStr);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        int count = Math.min(results.size(), MAX_MATCHES);
+        for (int i = 0; i < count; i++) {
+            sb.append(results.get(i)).append("\n");
+        }
+        if (results.size() > MAX_MATCHES) {
+            sb.append("... and more matches (truncated at ").append(MAX_MATCHES).append(" results)");
+        }
+
+        return ToolResult.success(sb.toString().trim());
     }
 
-    // TODO: 实现 Tool 接口的所有方法
+    /**
+     * Search a single file for regex matches
+     */
+    private void searchFile(Path file, Path root, Pattern regex, List<String> results) {
+        // Skip binary files by checking the file extension
+        String fileName = file.getFileName().toString();
+        if (isBinaryExtension(fileName)) {
+            return;
+        }
+
+        try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            String relativePath = root.relativize(file).toString();
+            String line;
+            int lineNum = 0;
+            while ((line = reader.readLine()) != null) {
+                lineNum++;
+                if (results.size() >= MAX_MATCHES) break;
+
+                Matcher m = regex.matcher(line);
+                if (m.find()) {
+                    results.add(relativePath + ":" + lineNum + ":" + line);
+                }
+            }
+        } catch (Exception e) {
+            // Skip files that can't be read as text (binary files, encoding issues)
+        }
+    }
+
+    private boolean isBinaryExtension(String fileName) {
+        String lower = fileName.toLowerCase();
+        return lower.endsWith(".class") || lower.endsWith(".jar") || lower.endsWith(".zip")
+                || lower.endsWith(".gz") || lower.endsWith(".tar") || lower.endsWith(".png")
+                || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".gif")
+                || lower.endsWith(".ico") || lower.endsWith(".pdf") || lower.endsWith(".exe")
+                || lower.endsWith(".dll") || lower.endsWith(".so") || lower.endsWith(".dylib")
+                || lower.endsWith(".woff") || lower.endsWith(".woff2") || lower.endsWith(".ttf");
+    }
 }

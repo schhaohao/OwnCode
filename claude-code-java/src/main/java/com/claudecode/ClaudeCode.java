@@ -1,5 +1,11 @@
 package com.claudecode;
 
+import com.claudecode.api.ClaudeApiClient;
+import com.claudecode.cli.Repl;
+import com.claudecode.core.AgentLoop;
+import com.claudecode.permission.PermissionManager;
+import com.claudecode.tool.ToolRegistry;
+
 /**
  * 程序入口 — 整个应用的启动点
  *
@@ -30,7 +36,82 @@ package com.claudecode;
  */
 public class ClaudeCode {
 
+    private static final String DEFAULT_MODEL = "claude-sonnet-4-6";
+
+    private static final String SYSTEM_PROMPT =
+            "You are an interactive agent that helps users with software engineering tasks. "
+            + "You have access to tools for reading files, editing files, executing shell commands, "
+            + "searching code, and more. Use the tools to accomplish the user's requests. "
+            + "Be concise and direct in your responses. "
+            + "When you need to explore the codebase, use the appropriate tools. "
+            + "When modifying code, read the file first to understand the context.";
+
     public static void main(String[] args) {
-        // TODO: 实现启动逻辑
+        // 1. 解析命令行参数
+        String apiKey = null;
+        String model = DEFAULT_MODEL;
+
+        for (int i = 0; i < args.length; i++) {
+            switch (args[i]) {
+                case "--api-key":
+                    if (i + 1 < args.length) apiKey = args[++i];
+                    break;
+                case "--model":
+                    if (i + 1 < args.length) model = args[++i];
+                    break;
+                case "--help":
+                    printUsage();
+                    return;
+            }
+        }
+
+        // 2. 如果命令行没传 API Key，从环境变量获取
+        if (apiKey == null || apiKey.isEmpty()) {
+            apiKey = System.getenv("ANTHROPIC_API_KEY");
+        }
+
+        // 3. 没有 API Key 则退出
+        if (apiKey == null || apiKey.isEmpty()) {
+            System.err.println("Error: API key is required.");
+            System.err.println("Set the ANTHROPIC_API_KEY environment variable or use --api-key <key>");
+            System.exit(1);
+        }
+
+        try {
+            // 4. 初始化各核心组件
+            String workingDirectory = System.getProperty("user.dir");
+
+            ClaudeApiClient apiClient = new ClaudeApiClient(apiKey, model);
+
+            ToolRegistry toolRegistry = new ToolRegistry(workingDirectory);
+            toolRegistry.registerBuiltinTools();
+
+            PermissionManager permissionManager = new PermissionManager();
+
+            AgentLoop agentLoop = new AgentLoop(
+                    apiClient, toolRegistry, permissionManager, SYSTEM_PROMPT);
+
+            // 5. 启动交互式命令行循环
+            Repl repl = new Repl(agentLoop);
+
+            // 注入 JLine LineReader 到 PermissionManager，避免 Scanner/JLine 抢 System.in
+            permissionManager.setInputReader(prompt -> repl.readLine(prompt));
+
+            repl.start();
+
+        } catch (Exception e) {
+            System.err.println("Fatal error: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
+
+    private static void printUsage() {
+        System.out.println("Usage: claude-code-java [options]");
+        System.out.println();
+        System.out.println("Options:");
+        System.out.println("  --api-key <key>    Anthropic API key (or set ANTHROPIC_API_KEY env var)");
+        System.out.println("  --model <model>    Model name (default: " + DEFAULT_MODEL + ")");
+        System.out.println("  --help             Show this help message");
     }
 }

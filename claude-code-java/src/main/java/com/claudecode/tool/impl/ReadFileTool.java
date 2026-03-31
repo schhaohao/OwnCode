@@ -169,48 +169,39 @@ public class ReadFileTool implements Tool {
             return ToolResult.error("Path is a directory, not a file: " + filePath);
         }
 
-        // ——— 第3步：读取文件 ———
-        List<String> lines;
-        try {
-            lines = Files.readAllLines(path, StandardCharsets.UTF_8);
+        // ——— 第3步：使用 BufferedReader 逐行读取，避免大文件 OOM ———
+        try (java.io.BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            int lineNum = 0;
+            int linesRead = 0;
+
+            while ((line = reader.readLine()) != null) {
+                lineNum++;
+                if (lineNum < offset) continue;   // skip 到 offset
+                if (linesRead >= limit) break;     // 已读够 limit 行
+
+                if (linesRead > 0) sb.append("\n");
+                sb.append(String.format("%6d\t%s", lineNum, line));
+                linesRead++;
+
+                if (sb.length() > MAX_OUTPUT_LENGTH) {
+                    sb.append("\n... (output truncated, exceeded ")
+                            .append(MAX_OUTPUT_LENGTH / 1024).append("KB)");
+                    break;
+                }
+            }
+
+            if (lineNum == 0) {
+                return ToolResult.success("File is empty: " + filePath);
+            }
+            if (linesRead == 0) {
+                return ToolResult.success("Offset " + offset + " is beyond file length (" + lineNum + " lines)");
+            }
+            return ToolResult.success(sb.toString());
+
         } catch (IOException e) {
-            // 编码异常（如二进制文件用 UTF-8 读取失败）
             return ToolResult.error("Failed to read file (possibly binary or encoding issue): " + e.getMessage());
         }
-
-        // ——— 第4步：处理空文件 ———
-        if (lines.isEmpty()) {
-            return ToolResult.success("File is empty: " + filePath);
-        }
-
-        // ——— 第5步：按 offset/limit 截取并格式化 ———
-        // offset 是 1-based，转为 0-based 数组索引
-        int startIndex = offset - 1;
-        int endIndex = Math.min(startIndex + limit, lines.size());
-
-        // offset 超出文件范围
-        if (startIndex >= lines.size()) {
-            return ToolResult.success("Offset " + offset + " is beyond file length (" + lines.size() + " lines)");
-        }
-
-        StringBuilder sb = new StringBuilder();
-        for (int i = startIndex; i < endIndex; i++) {
-            // 模拟 cat -n 格式：行号右对齐6位 + tab + 行内容
-            sb.append(String.format("%6d\t%s", i + 1, lines.get(i)));
-
-            // 除了最后一行，每行后面加换行符
-            if (i < endIndex - 1) {
-                sb.append("\n");
-            }
-
-            // 输出截断保护
-            if (sb.length() > MAX_OUTPUT_LENGTH) {
-                sb.append("\n... (output truncated, exceeded ")
-                        .append(MAX_OUTPUT_LENGTH / 1024).append("KB)");
-                break;
-            }
-        }
-
-        return ToolResult.success(sb.toString());
     }
 }

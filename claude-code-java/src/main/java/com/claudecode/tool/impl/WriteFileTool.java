@@ -1,5 +1,16 @@
 package com.claudecode.tool.impl;
 
+import com.claudecode.tool.Tool;
+import com.claudecode.tool.ToolResult;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * WriteFileTool — 文件写入工具（全量覆写）
  *
@@ -46,31 +57,72 @@ package com.claudecode.tool.impl;
  * - 对于修改已有文件的场景，通常应该使用 EditFileTool（局部替换）而不是这个工具。
  * - WriteFileTool 主要用于创建新文件。
  */
-public class WriteFileTool implements com.claudecode.tool.Tool {
+public class WriteFileTool implements Tool {
+
     @Override
     public String name() {
-        return "";
+        return "Write";
     }
 
     @Override
     public String description() {
-        return "";
+        return "Writes content to a file at the specified path. "
+                + "Creates the file if it doesn't exist, overwrites if it does. "
+                + "Use this for creating new files. "
+                + "For modifying existing files, prefer the Edit tool (safer, only changes a specific part).";
     }
 
     @Override
-    public java.util.Map<String, Object> inputSchema() {
-        return java.util.Map.of();
+    public Map<String, Object> inputSchema() {
+        Map<String, Object> filePathProp = new LinkedHashMap<>();
+        filePathProp.put("type", "string");
+        filePathProp.put("description", "The absolute path of the file to write");
+
+        Map<String, Object> contentProp = new LinkedHashMap<>();
+        contentProp.put("type", "string");
+        contentProp.put("description", "The complete content to write to the file");
+
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("file_path", filePathProp);
+        properties.put("content", contentProp);
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", List.of("file_path", "content"));
+        return schema;
     }
 
     @Override
     public boolean requiresPermission() {
-        return false;
+        return true;
     }
 
     @Override
-    public com.claudecode.tool.ToolResult execute(java.util.Map<String, Object> input) {
-        return null;
-    }
+    public ToolResult execute(Map<String, Object> input) {
+        String filePath = (String) input.get("file_path");
+        if (filePath == null || filePath.isBlank()) {
+            return ToolResult.error("Parameter 'file_path' is required");
+        }
+        String content = (String) input.get("content");
+        if (content == null) {
+            return ToolResult.error("Parameter 'content' is required");
+        }
 
-    // TODO: 实现 Tool 接口的所有方法
+        try {
+            Path path = Paths.get(filePath);
+
+            // Ensure parent directories exist
+            Path parent = path.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+
+            Files.writeString(path, content, StandardCharsets.UTF_8);
+            return ToolResult.success("File written successfully: " + filePath);
+
+        } catch (Exception e) {
+            return ToolResult.error("Failed to write file: " + e.getMessage());
+        }
+    }
 }

@@ -1,5 +1,10 @@
 package com.claudecode.core;
 
+import com.claudecode.api.model.Message;
+
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * ContextManager — 上下文窗口管理器
  *
@@ -55,5 +60,92 @@ package com.claudecode.core;
  */
 public class ContextManager {
 
-    // TODO: 实现
+    /** Claude 上下文窗口大小（200K tokens） */
+    private final int maxContextTokens;
+
+    /** 触发压缩的阈值比例（已用 token / 窗口容量） */
+    private final double compactThreshold;
+
+    /** 压缩时保留最近多少轮对话（1轮 = 1对 user+assistant 消息） */
+    private final int keepRecentTurns;
+
+    public ContextManager() {
+        this(200_000, 0.8, 10);
+    }
+
+    public ContextManager(int maxContextTokens, double compactThreshold, int keepRecentTurns) {
+        this.maxContextTokens = maxContextTokens;
+        this.compactThreshold = compactThreshold;
+        this.keepRecentTurns = keepRecentTurns;
+    }
+
+    /**
+     * 判断当前历史是否接近上下文窗口限制
+     *
+     * 当已用 token 超过窗口容量的 compactThreshold（默认 80%）时返回 true
+     */
+    public boolean isNearLimit(ConversationHistory history) {
+        int estimated = history.estimateTokenCount();
+        return estimated > (int) (maxContextTokens * compactThreshold);
+    }
+
+    /**
+     * 执行上下文压缩 — 截断策略（简单版）
+     *
+     * 策略：
+     *   1. 保留第一条 user 消息（包含用户的初始需求，是最重要的上下文）
+     *   2. 保留最近 keepRecentTurns * 2 条消息（最近的对话最有价值）
+     *   3. 中间的历史直接丢弃
+     *
+     * 确保截取后的消息序列仍然满足 user/assistant 交替规则。
+     */
+    public void compact(ConversationHistory history) {
+        List<Message> messages = history.getMessages();
+        int total = messages.size();
+        int keepRecent = keepRecentTurns * 2;  // 每轮 = user + assistant
+
+        // 消息太少，不需要压缩
+        if (total <= keepRecent + 1) {
+            return;
+        }
+
+        List<Message> compacted = new ArrayList<>();
+
+        // 1. 保留第一条 user 消息（初始上下文）
+        compacted.add(messages.get(0));
+
+        // 2. 计算最近消息的起始索引
+        int recentStart = total - keepRecent;
+
+        // 确保 recentStart 指向 assistant 消息（接在 messages[0](user) 后面）
+        // 如果指向 user（可能是 tool_result），往后移一位到 assistant
+        // 避免 user, user 连续，也避免 orphan tool_result
+        if (recentStart > 0 && "user".equals(messages.get(recentStart).getRole())) {
+            recentStart++;
+        }
+
+        // 避免和第一条消息重叠或越界
+        if (recentStart <= 1 || recentStart >= total) {
+            return;  // 无法有效压缩
+        }
+
+        // 3. 保留最近的消息
+        for (int i = recentStart; i < total; i++) {
+            compacted.add(messages.get(i));
+        }
+
+        // 4. 验证 role 交替：如果压缩后不满足交替规则则放弃压缩
+        for (int i = 1; i < compacted.size(); i++) {
+            if (compacted.get(i).getRole().equals(compacted.get(i - 1).getRole())) {
+                return;
+            }
+        }
+
+        // 用压缩后的列表替换原历史
+        history.replaceAll(compacted);
+    }
+
+    public int getMaxContextTokens() {
+        return maxContextTokens;
+    }
 }

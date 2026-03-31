@@ -1,5 +1,19 @@
 package com.claudecode.cli;
 
+import com.claudecode.core.AgentLoop;
+import org.jline.reader.EndOfFileException;
+import org.jline.reader.LineReader;
+import org.jline.reader.LineReaderBuilder;
+import org.jline.reader.UserInterruptException;
+import org.jline.reader.impl.history.DefaultHistory;
+import org.jline.terminal.Terminal;
+import org.jline.terminal.TerminalBuilder;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 /**
  * Repl — 交互式命令行循环 (Read-Eval-Print Loop)
  *
@@ -36,7 +50,7 @@ package com.claudecode.cli;
  * 3. private void printWelcome()
  *    - 打印启动信息，如：
  *      ╔══════════════════════════════════════╗
- *      ║       Claude Code Java v1.0          ║
+ *      ║       Own Code Java v1.0          ║
  *      ║   Type /help for available commands   ║
  *      ╚══════════════════════════════════════╝
  *
@@ -62,5 +76,132 @@ package com.claudecode.cli;
  */
 public class Repl {
 
-    // TODO: 实现
+    /** 命令行提示符 */
+    private static final String PROMPT = "claude> ";
+
+    /** 历史文件目录 */
+    private static final String HISTORY_DIR = ".claude-code-java";
+
+    private final AgentLoop agentLoop;
+    private final TerminalRenderer renderer;
+    private final Terminal terminal;
+    private final LineReader lineReader;
+    private volatile boolean running = true;
+
+    public Repl(AgentLoop agentLoop) throws IOException {
+        this.agentLoop = agentLoop;
+        this.renderer = new TerminalRenderer();
+
+        // 初始化 JLine3 终端
+        this.terminal = TerminalBuilder.builder()
+                .system(true)
+                .build();
+
+        // 配置历史文件路径：~/.claude-code-java/history
+        Path historyDir = Paths.get(System.getProperty("user.home"), HISTORY_DIR);
+        Files.createDirectories(historyDir);
+        Path historyFile = historyDir.resolve("history");
+
+        // 初始化 LineReader（支持行编辑、历史记录）
+        this.lineReader = LineReaderBuilder.builder()
+                .terminal(terminal)
+                .history(new DefaultHistory())
+                .variable(LineReader.HISTORY_FILE, historyFile)
+                .build();
+    }
+
+    /**
+     * 启动交互式命令行循环
+     *
+     * 流程：
+     *   1. 打印欢迎信息
+     *   2. while(true) 循环读取用户输入
+     *   3. 处理特殊命令或交给 AgentLoop
+     *   4. 捕获异常但不退出循环
+     */
+    public void start() {
+        renderer.renderWelcome();
+
+        try {
+            while (running) {
+                String input;
+                try {
+                    input = lineReader.readLine(PROMPT);
+                } catch (UserInterruptException e) {
+                    System.out.println();
+                    continue;
+                } catch (EndOfFileException e) {
+                    printGoodbye();
+                    break;
+                }
+
+                if (input == null || input.trim().isEmpty()) {
+                    continue;
+                }
+
+                String trimmed = input.trim();
+
+                if (handleCommand(trimmed)) {
+                    continue;
+                }
+
+                try {
+                    agentLoop.run(trimmed);
+                    System.out.println();
+                } catch (Exception e) {
+                    renderer.renderError("Failed to process request: " + e.getMessage());
+                }
+            }
+        } finally {
+            // 确保 Terminal 资源被正确释放（恢复终端状态）
+            try {
+                terminal.close();
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+    }
+
+    /**
+     * 处理特殊命令
+     *
+     * @return true 如果输入是特殊命令（已处理），false 如果是普通输入
+     */
+    private boolean handleCommand(String input) {
+        switch (input.toLowerCase()) {
+            case "/exit":
+            case "/quit":
+                printGoodbye();
+                running = false;
+                return true;
+
+            case "/clear":
+                agentLoop.getHistory().clear();
+                renderer.renderSystemMessage("Conversation history cleared.");
+                return true;
+
+            case "/help":
+                renderer.renderHelp();
+                return true;
+
+            default:
+                if (input.startsWith("/")) {
+                    renderer.renderError("Unknown command: " + input + ". Type /help for available commands.");
+                    return true;
+                }
+                return false;
+        }
+    }
+
+    private void printGoodbye() {
+        renderer.renderSystemMessage("Goodbye!");
+    }
+
+    /**
+     * 暴露 LineReader 的 readLine 方法，供 PermissionManager 注入使用
+     * 解决 Scanner(System.in) 与 JLine raw mode 冲突问题
+     */
+    public String readLine(String prompt) {
+        return lineReader.readLine(prompt);
+    }
 }

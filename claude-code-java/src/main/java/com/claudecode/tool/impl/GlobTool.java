@@ -1,5 +1,14 @@
 package com.claudecode.tool.impl;
 
+import com.claudecode.tool.Tool;
+import com.claudecode.tool.ToolResult;
+
+import java.io.IOException;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.*;
+import java.util.stream.Collectors;
+
 /**
  * GlobTool — 文件名模式搜索工具
  *
@@ -68,20 +77,47 @@ package com.claudecode.tool.impl;
  * - "src/main/**\/*.xml"  → src/main 下所有 XML 文件
  * - "*.{java,xml}"       → 当前目录的 Java 和 XML 文件
  */
-public class GlobTool implements com.claudecode.tool.Tool {
+public class GlobTool implements Tool {
+
+    /** Maximum number of results to return */
+    private static final int MAX_RESULTS = 200;
+
+    /** Directories to skip during search (与 GrepTool 保持一致) */
+    private static final Set<String> SKIP_DIRS = Set.of(
+            ".git", "node_modules", "target", "build", ".idea", "__pycache__", ".gradle");
+
     @Override
     public String name() {
-        return "";
+        return "Glob";
     }
 
     @Override
     public String description() {
-        return "";
+        return "Fast file pattern matching tool that works with any codebase size. "
+                + "Supports glob patterns like '**/*.java' or 'src/**/*.ts'. "
+                + "Returns matching file paths sorted by modification time (most recent first). "
+                + "Use this when you need to find files by name or extension.";
     }
 
     @Override
-    public java.util.Map<String, Object> inputSchema() {
-        return java.util.Map.of();
+    public Map<String, Object> inputSchema() {
+        Map<String, Object> patternProp = new LinkedHashMap<>();
+        patternProp.put("type", "string");
+        patternProp.put("description", "Glob pattern, e.g. '**/*.java', 'src/**/*.xml'");
+
+        Map<String, Object> pathProp = new LinkedHashMap<>();
+        pathProp.put("type", "string");
+        pathProp.put("description", "Root directory to search in (default: current working directory)");
+
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("pattern", patternProp);
+        properties.put("path", pathProp);
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", List.of("pattern"));
+        return schema;
     }
 
     @Override
@@ -90,9 +126,80 @@ public class GlobTool implements com.claudecode.tool.Tool {
     }
 
     @Override
-    public com.claudecode.tool.ToolResult execute(java.util.Map<String, Object> input) {
-        return null;
-    }
+    public ToolResult execute(Map<String, Object> input) {
+        String pattern = (String) input.get("pattern");
+        if (pattern == null || pattern.isBlank()) {
+            return ToolResult.error("Parameter 'pattern' is required");
+        }
 
-    // TODO: 实现 Tool 接口的所有方法
+        String pathStr = (String) input.get("path");
+        Path rootPath;
+        try {
+            rootPath = pathStr != null ? Paths.get(pathStr) : Paths.get(System.getProperty("user.dir"));
+            if (!Files.isDirectory(rootPath)) {
+                return ToolResult.error("Path is not a directory: " + rootPath);
+            }
+        } catch (Exception e) {
+            return ToolResult.error("Invalid path: " + e.getMessage());
+        }
+
+        try {
+            PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
+            List<Path> matches = new ArrayList<>();
+
+            Files.walkFileTree(rootPath, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    // Skip common non-interesting directories
+                    String dirName = dir.getFileName() != null ? dir.getFileName().toString() : "";
+                    if (SKIP_DIRS.contains(dirName)) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    Path relative = rootPath.relativize(file);
+                    if (matcher.matches(relative)) {
+                        matches.add(file);
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return FileVisitResult.CONTINUE; // Skip unreadable files
+                }
+            });
+
+            if (matches.isEmpty()) {
+                return ToolResult.success("No files matched pattern: " + pattern);
+            }
+
+            // Sort by last modified time (most recent first)
+            matches.sort((a, b) -> {
+                try {
+                    return Files.getLastModifiedTime(b).compareTo(Files.getLastModifiedTime(a));
+                } catch (IOException e) {
+                    return 0;
+                }
+            });
+
+            // Build result string
+            StringBuilder sb = new StringBuilder();
+            int count = Math.min(matches.size(), MAX_RESULTS);
+            for (int i = 0; i < count; i++) {
+                sb.append(matches.get(i).toString()).append("\n");
+            }
+            if (matches.size() > MAX_RESULTS) {
+                sb.append("... and ").append(matches.size() - MAX_RESULTS).append(" more files");
+            }
+
+            return ToolResult.success(sb.toString().trim());
+
+        } catch (Exception e) {
+            return ToolResult.error("Glob search failed: " + e.getMessage());
+        }
+    }
 }

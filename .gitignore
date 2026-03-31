@@ -1,3 +1,19 @@
+# IDE
 .idea/
+*.iml
+.vscode/
+
+# Claude Code
 .claude/
-./claude-code-java/target/
+
+# Docs (独立仓库)
+docs/
+
+# Java / Maven build output
+**/target/
+*.class
+*.jar
+*.war
+
+# OS
+.DS_Store
