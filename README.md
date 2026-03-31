@@ -60,8 +60,20 @@ mvn test
 mvn clean package
 
 # 运行（需要设置 API Key）
-export ANTHROPIC_API_KEY=your-api-key
-java -jar target/claude-code-java-1.0-SNAPSHOT.jar
+cd claude-code-java
+mvn clean package -DskipTests
+
+# 指定你自己的 API 地址
+java -jar target/claude-code-java-1.0-SNAPSHOT.jar \
+  --base-url https://your-api-host.com \
+  --api-key your-key \
+  --model your-model-name
+
+# 或者用环境变量
+export ANTHROPIC_BASE_URL="https://your-api-host.com"
+export ANTHROPIC_API_KEY="your-key"
+java -jar target/claude-code-java-1.0-SNAPSHOT.jar --model your-model-name
+
 ```
 
 ## 核心原理

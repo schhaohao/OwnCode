@@ -215,8 +215,8 @@ public class PermissionManager {
         if (detail != null) {
             // 如果 detail 太长则截断显示
             String displayDetail = detail.length() > 36 ? detail.substring(0, 33) + "..." : detail;
-            System.out.printf("│  %s: %-*s│%n", getDetailLabel(toolName),
-                    38 - getDetailLabel(toolName).length() - 2, displayDetail);
+            int width = 38 - getDetailLabel(toolName).length() - 2;
+            System.out.printf("│  %s: %-" + width + "s│%n", getDetailLabel(toolName), displayDetail);
         }
         System.out.println("│                                              │");
         System.out.println("│  Allow? (y)es / (n)o / (a)lways             │");
