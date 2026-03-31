@@ -50,6 +50,7 @@ public class ClaudeCode {
         // 1. 解析命令行参数
         String apiKey = null;
         String model = DEFAULT_MODEL;
+        String baseUrl = null;
 
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -59,15 +60,21 @@ public class ClaudeCode {
                 case "--model":
                     if (i + 1 < args.length) model = args[++i];
                     break;
+                case "--base-url":
+                    if (i + 1 < args.length) baseUrl = args[++i];
+                    break;
                 case "--help":
                     printUsage();
                     return;
             }
         }
 
-        // 2. 如果命令行没传 API Key，从环境变量获取
+        // 2. 如果命令行没传，从环境变量获取
         if (apiKey == null || apiKey.isEmpty()) {
             apiKey = System.getenv("ANTHROPIC_API_KEY");
+        }
+        if (baseUrl == null || baseUrl.isEmpty()) {
+            baseUrl = System.getenv("ANTHROPIC_BASE_URL");
         }
 
         // 3. 没有 API Key 则退出
@@ -81,7 +88,9 @@ public class ClaudeCode {
             // 4. 初始化各核心组件
             String workingDirectory = System.getProperty("user.dir");
 
-            ClaudeApiClient apiClient = new ClaudeApiClient(apiKey, model);
+            ClaudeApiClient apiClient = baseUrl != null
+                    ? new ClaudeApiClient(apiKey, model, baseUrl)
+                    : new ClaudeApiClient(apiKey, model);
 
             ToolRegistry toolRegistry = new ToolRegistry(workingDirectory);
             toolRegistry.registerBuiltinTools();
@@ -111,6 +120,7 @@ public class ClaudeCode {
         System.out.println();
         System.out.println("Options:");
         System.out.println("  --api-key <key>    Anthropic API key (or set ANTHROPIC_API_KEY env var)");
+        System.out.println("  --base-url <url>   Custom API base URL (or set ANTHROPIC_BASE_URL env var)");
         System.out.println("  --model <model>    Model name (default: " + DEFAULT_MODEL + ")");
         System.out.println("  --help             Show this help message");
     }

@@ -74,8 +74,8 @@ import java.util.function.Consumer;
  */
 public class ClaudeApiClient {
 
-    /** Claude Messages API 端点 */
-    private static final String API_URL = "https://api.anthropic.com/v1/messages";
+    /** 默认 API 端点 */
+    private static final String DEFAULT_BASE_URL = "https://api.anthropic.com";
 
     /** API 版本号（必须在请求头中携带） */
     private static final String API_VERSION = "2023-06-01";
@@ -85,32 +85,43 @@ public class ClaudeApiClient {
 
     private final String apiKey;
     private final String defaultModel;
+    private final String apiUrl;
     private final OkHttpClient httpClient;
     private final ObjectMapper mapper;
 
     /**
-     * @param apiKey API 密钥（从环境变量 ANTHROPIC_API_KEY 获取）
-     * @param defaultModel 默认模型名称，如 "claude-sonnet-4-6"
+     * 使用默认 Anthropic API 端点
      */
     public ClaudeApiClient(String apiKey, String defaultModel) {
+        this(apiKey, defaultModel, DEFAULT_BASE_URL);
+    }
+
+    /**
+     * @param apiKey       API 密钥
+     * @param defaultModel 默认模型名称
+     * @param baseUrl      API base URL，如 "https://api.anthropic.com" 或自定义代理地址
+     */
+    public ClaudeApiClient(String apiKey, String defaultModel, String baseUrl) {
         this.apiKey = apiKey;
         this.defaultModel = defaultModel;
+        // 去掉末尾斜杠后拼接路径
+        this.apiUrl = baseUrl.replaceAll("/+$", "") + "/v1/messages";
         this.mapper = new ObjectMapper();
 
-        // LLM 响应可能很慢（复杂任务需要长时间思考），所以设置较长的超时
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(300, TimeUnit.SECONDS)    // 5分钟读取超时
+                .readTimeout(300, TimeUnit.SECONDS)
                 .writeTimeout(30, TimeUnit.SECONDS)
                 .build();
     }
 
     /**
-     * 允许自定义 OkHttpClient 和 API URL（用于测试）
+     * 允许自定义 OkHttpClient（用于测试）
      */
     ClaudeApiClient(String apiKey, String defaultModel, OkHttpClient httpClient) {
         this.apiKey = apiKey;
         this.defaultModel = defaultModel;
+        this.apiUrl = DEFAULT_BASE_URL + "/v1/messages";
         this.httpClient = httpClient;
         this.mapper = new ObjectMapper();
     }
@@ -231,7 +242,7 @@ public class ClaudeApiClient {
         RequestBody body = RequestBody.create(jsonBody, MediaType.get("application/json"));
 
         return new Request.Builder()
-                .url(API_URL)
+                .url(apiUrl)
                 .post(body)
                 .addHeader("x-api-key", apiKey)
                 .addHeader("anthropic-version", API_VERSION)
