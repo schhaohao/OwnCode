@@ -39,6 +39,18 @@ src/main/java/com/claudecode/
 │       ├── WriteFileTool.java   # 文件写入
 │       ├── GlobTool.java        # 文件名搜索
 │       └── GrepTool.java        # 文件内容搜索
+├── mcp/                         # MCP（Model Context Protocol）集成
+│   ├── McpManager.java          # MCP 子系统总管理器（生命周期编排）
+│   ├── McpToolAdapter.java      # 远程工具 → 本地 Tool 接口的适配器
+│   ├── client/
+│   │   ├── McpTransport.java    # 传输层抽象接口
+│   │   ├── StdioTransport.java  # stdio 传输实现（子进程 stdin/stdout）
+│   │   ├── McpClient.java       # 单个 MCP Server 的客户端（握手/发现/调用）
+│   │   ├── JsonRpcRequest.java  # JSON-RPC 2.0 请求消息
+│   │   └── JsonRpcResponse.java # JSON-RPC 2.0 响应消息
+│   └── config/
+│       ├── McpConfigLoader.java # 配置加载器（settings.json → McpServerConfig）
+│       └── McpServerConfig.java # 单个 MCP Server 配置数据模型
 ├── permission/
 │   ├── PermissionManager.java   # 权限管理
 │   └── PermissionRule.java      # 权限规则
@@ -89,3 +101,49 @@ java -jar target/claude-code-java-1.0-SNAPSHOT.jar --model your-model-name
                                                        ↓
                                                追加到对话历史 → 回到调用 API
 ```
+
+## MCP（Model Context Protocol）集成
+
+本项目支持通过 MCP 协议接入外部工具服务器，扩展 Agent 的能力边界。
+
+### 工作原理
+
+```
+启动时：settings.json → 加载 MCP Server 配置
+           ↓
+  ProcessBuilder 启动子进程（stdio 通信）
+           ↓
+  JSON-RPC 握手（initialize + notifications/initialized）
+           ↓
+  tools/list 发现远程工具
+           ↓
+  McpToolAdapter 适配为 Tool 接口 → 注册到 ToolRegistry
+           ↓
+  AgentLoop 透明使用（无法区分内置工具和 MCP 工具）
+```
+
+### 配置方式
+
+在 `~/.claude-code-java/settings.json` 或项目目录下 `.claude-code-java/settings.json` 中配置：
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "env": { "NODE_ENV": "production" }
+    }
+  }
+}
+```
+
+项目级配置优先于用户级配置，`env` 值支持 `${ENV_VAR}` 环境变量插值。
+
+### 关键设计
+
+- **适配器模式**：`McpToolAdapter` 将远程 MCP 工具适配为本地 `Tool` 接口，AgentLoop 零感知
+- **命名规范**：MCP 工具名格式为 `mcp__<serverName>__<toolName>`（与 Claude Code 官方一致）
+- **安全第一**：所有 MCP 工具默认需要用户审批（Human-in-the-loop）
+- **容错隔离**：单个 Server 连接失败不影响其他 Server 和整体启动
+- **进程管理**：JVM 退出时通过 ShutdownHook 清理所有 MCP 子进程

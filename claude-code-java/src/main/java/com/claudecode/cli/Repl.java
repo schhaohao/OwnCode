@@ -88,6 +88,11 @@ public class Repl {
     private final LineReader lineReader;
     private volatile boolean running = true;
 
+    // 启动横幅展示的连接配置
+    private String configModel;
+    private String configBaseUrl;
+    private String configApiKey;
+
     public Repl(AgentLoop agentLoop) throws IOException {
         this.agentLoop = agentLoop;
         this.renderer = new TerminalRenderer();
@@ -120,7 +125,7 @@ public class Repl {
      *   4. 捕获异常但不退出循环
      */
     public void start() {
-        renderer.renderWelcome();
+        renderer.renderWelcome(configModel, configBaseUrl, configApiKey);
 
         try {
             while (running) {
@@ -195,6 +200,15 @@ public class Repl {
 
     private void printGoodbye() {
         renderer.renderSystemMessage("Goodbye!");
+    }
+
+    /**
+     * 设置启动横幅展示的连接配置信息
+     */
+    public void setConnectionInfo(String model, String baseUrl, String apiKey) {
+        this.configModel = model;
+        this.configBaseUrl = baseUrl;
+        this.configApiKey = apiKey;
     }
 
     /**

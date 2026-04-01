@@ -3,8 +3,16 @@ package com.claudecode;
 import com.claudecode.api.ClaudeApiClient;
 import com.claudecode.cli.Repl;
 import com.claudecode.core.AgentLoop;
+import com.claudecode.mcp.McpManager;
+import com.claudecode.mcp.config.McpConfigLoader;
+import com.claudecode.mcp.config.McpServerConfig;
 import com.claudecode.permission.PermissionManager;
 import com.claudecode.tool.ToolRegistry;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.io.*;
+import java.util.Map;
 
 /**
  * 程序入口 — 整个应用的启动点
@@ -38,19 +46,12 @@ public class ClaudeCode {
 
     private static final String DEFAULT_MODEL = "claude-sonnet-4-6";
 
-    private static final String SYSTEM_PROMPT =
-            "You are an interactive agent that helps users with software engineering tasks. "
-            + "You have access to tools for reading files, editing files, executing shell commands, "
-            + "searching code, and more. Use the tools to accomplish the user's requests. "
-            + "Be concise and direct in your responses. "
-            + "When you need to explore the codebase, use the appropriate tools. "
-            + "When modifying code, read the file first to understand the context.";
-
     public static void main(String[] args) {
         // 1. 解析命令行参数
         String apiKey = null;
         String model = DEFAULT_MODEL;
         String baseUrl = null;
+        String systemPrompt = loadSystemPrompt();
 
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -69,24 +70,39 @@ public class ClaudeCode {
             }
         }
 
-        // 2. 如果命令行没传，从环境变量获取
+        // 2. 如果命令行没传，从环境变量获取（使用独立前缀，避免与官方 Claude Code 冲突）
         if (apiKey == null || apiKey.isEmpty()) {
-            apiKey = System.getenv("ANTHROPIC_API_KEY");
+            apiKey = System.getenv("CCJ_API_KEY");
         }
         if (baseUrl == null || baseUrl.isEmpty()) {
-            baseUrl = System.getenv("ANTHROPIC_BASE_URL");
+            baseUrl = System.getenv("CCJ_BASE_URL");
         }
 
-        // 3. 没有 API Key 则退出
+        // 3. 如果还没有，从 settings.json 读取持久化配置
+        String workingDirectory = System.getProperty("user.dir");
+        JsonNode settings = loadSettings(workingDirectory);
+        if (settings != null) {
+            if (apiKey == null || apiKey.isEmpty()) {
+                apiKey = getSettingsString(settings, "apiKey");
+            }
+            if (baseUrl == null || baseUrl.isEmpty()) {
+                baseUrl = getSettingsString(settings, "baseUrl");
+            }
+            String settingsModel = getSettingsString(settings, "model");
+            if (settingsModel != null && model.equals(DEFAULT_MODEL)) {
+                model = settingsModel;
+            }
+        }
+
+        // 4. 没有 API Key 则退出
         if (apiKey == null || apiKey.isEmpty()) {
             System.err.println("Error: API key is required.");
-            System.err.println("Set the ANTHROPIC_API_KEY environment variable or use --api-key <key>");
+            System.err.println("Provide it via: --api-key, CCJ_API_KEY env var, or settings.json");
             System.exit(1);
         }
 
         try {
-            // 4. 初始化各核心组件
-            String workingDirectory = System.getProperty("user.dir");
+            // 5. 初始化各核心组件
 
             ClaudeApiClient apiClient = baseUrl != null
                     ? new ClaudeApiClient(apiKey, model, baseUrl)
@@ -95,16 +111,32 @@ public class ClaudeCode {
             ToolRegistry toolRegistry = new ToolRegistry(workingDirectory);
             toolRegistry.registerBuiltinTools();
 
+            // MCP 工具注册：从 settings.json 加载 MCP Server 配置，连接并发现工具
+            ObjectMapper objectMapper = new ObjectMapper();
+            McpConfigLoader configLoader = new McpConfigLoader(objectMapper);
+            Map<String, McpServerConfig> mcpConfigs = configLoader.load(workingDirectory);
+            McpManager mcpManager = new McpManager(objectMapper);
+            if (!mcpConfigs.isEmpty()) {
+                mcpManager.initializeAndRegister(mcpConfigs, toolRegistry);
+            }
+
             PermissionManager permissionManager = new PermissionManager();
 
             AgentLoop agentLoop = new AgentLoop(
-                    apiClient, toolRegistry, permissionManager, SYSTEM_PROMPT);
+                    apiClient, toolRegistry, permissionManager, systemPrompt);
 
             // 5. 启动交互式命令行循环
             Repl repl = new Repl(agentLoop);
+            repl.setConnectionInfo(model, baseUrl, apiKey);
 
             // 注入 JLine LineReader 到 PermissionManager，避免 Scanner/JLine 抢 System.in
             permissionManager.setInputReader(prompt -> repl.readLine(prompt));
+
+            // 程序退出时清理 MCP 子进程
+            McpManager finalMcpManager = mcpManager;
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try { finalMcpManager.close(); } catch (IOException ignored) {}
+            }));
 
             repl.start();
 
@@ -119,9 +151,77 @@ public class ClaudeCode {
         System.out.println("Usage: claude-code-java [options]");
         System.out.println();
         System.out.println("Options:");
-        System.out.println("  --api-key <key>    Anthropic API key (or set ANTHROPIC_API_KEY env var)");
-        System.out.println("  --base-url <url>   Custom API base URL (or set ANTHROPIC_BASE_URL env var)");
-        System.out.println("  --model <model>    Model name (default: " + DEFAULT_MODEL + ")");
+        System.out.println("  --api-key <key>    API key (or set CCJ_API_KEY env var, or settings.json)");
+        System.out.println("  --base-url <url>   Custom API base URL (or set CCJ_BASE_URL env var, or settings.json)");
+        System.out.println("  --model <model>    Model name (default: " + DEFAULT_MODEL + ", or settings.json)");
         System.out.println("  --help             Show this help message");
+    }
+
+    /**
+     * 从 settings.json 加载配置
+     *
+     * 搜索路径（项目级覆盖用户级）：
+     * 1. ~/.claude-code-java/settings.json
+     * 2. <workingDir>/.claude-code-java/settings.json
+     */
+    private static JsonNode loadSettings(String workingDirectory) {
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode merged = null;
+
+        // 用户级
+        File userFile = new File(System.getProperty("user.home"),
+                ".claude-code-java" + File.separator + "settings.json");
+        merged = readJsonFile(mapper, userFile);
+
+        // 项目级（覆盖用户级）
+        if (workingDirectory != null) {
+            File projectFile = new File(workingDirectory,
+                    ".claude-code-java" + File.separator + "settings.json");
+            JsonNode projectSettings = readJsonFile(mapper, projectFile);
+            if (projectSettings != null) {
+                merged = projectSettings;
+            }
+        }
+
+        return merged;
+    }
+
+    private static JsonNode readJsonFile(ObjectMapper mapper, File file) {
+        if (file.exists() && file.isFile()) {
+            try {
+                return mapper.readTree(file);
+            } catch (IOException e) {
+                System.err.println("[Config] Failed to read " + file.getAbsolutePath() + ": " + e.getMessage());
+            }
+        }
+        return null;
+    }
+
+    private static String getSettingsString(JsonNode settings, String key) {
+        JsonNode node = settings.get(key);
+        return (node != null && node.isTextual()) ? node.asText() : null;
+    }
+
+    /**
+     * 从 classpath 加载 system-prompt.txt
+     */
+    private static String loadSystemPrompt() {
+        try (InputStream is = ClaudeCode.class.getResourceAsStream("/system-prompt.txt")) {
+            if (is == null) {
+                System.err.println("[Config] system-prompt.txt not found in classpath, using fallback.");
+                return "You are a helpful coding assistant.";
+            }
+            BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (sb.length() > 0) sb.append("\n");
+                sb.append(line);
+            }
+            return sb.toString();
+        } catch (IOException e) {
+            System.err.println("[Config] Failed to load system-prompt.txt: " + e.getMessage());
+            return "You are a helpful coding assistant.";
+        }
     }
 }

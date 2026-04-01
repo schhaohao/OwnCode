@@ -147,13 +147,17 @@ public class TerminalRenderer {
     }
 
     /**
-     * 渲染欢迎信息
+     * 渲染欢迎信息（含连接配置）
      */
-    public void renderWelcome() {
+    public void renderWelcome(String model, String baseUrl, String apiKey) {
         String border = color(CYAN, "================================================");
         System.out.println(border);
         System.out.println(color(BOLD, "        Claude Code Java v1.0"));
         System.out.println(color(GRAY, "    Type /help for available commands"));
+        System.out.println();
+        System.out.println(color(GRAY, "    Model:    ") + color(BOLD, model));
+        System.out.println(color(GRAY, "    API:      ") + color(BOLD, baseUrl != null ? baseUrl : "https://api.anthropic.com"));
+        System.out.println(color(GRAY, "    Key:      ") + color(BOLD, maskApiKey(apiKey)));
         System.out.println(border);
         System.out.println();
     }
@@ -207,5 +211,21 @@ public class TerminalRenderer {
         int newline = text.indexOf('\n');
         String line = newline >= 0 ? text.substring(0, newline) : text;
         return line.length() > maxLen ? line.substring(0, maxLen) + "..." : line;
+    }
+
+    /**
+     * API Key 脱敏：保留前缀和最后4位，中间用 **** 替代
+     * 例如：sk-kimi-JuqI...dOW → sk-kimi-****dOW
+     */
+    private String maskApiKey(String apiKey) {
+        if (apiKey == null) return "not set";
+        if (apiKey.length() <= 8) return "****";
+        // 找最后一个 '-' 之后的前缀部分
+        int lastDash = apiKey.lastIndexOf('-');
+        String prefix = lastDash > 0 && lastDash < apiKey.length() - 5
+                ? apiKey.substring(0, lastDash + 1)
+                : apiKey.substring(0, 4);
+        String suffix = apiKey.substring(apiKey.length() - 4);
+        return prefix + "****" + suffix;
     }
 }
