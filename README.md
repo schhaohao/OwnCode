@@ -2,6 +2,8 @@
 
 用 Java 复刻的简易版 Claude Code CLI —— 一个基于 Claude API 的交互式编程助手。
 
+> 📖 **学习文档**：[https://schhaohao.github.io/docs/](https://schhaohao.github.io/docs/)
+
 ## 技术栈
 
 - Java 11
@@ -28,6 +30,16 @@ src/main/java/com/claudecode/
 │       ├── ToolDefinition.java  # 工具定义
 │       ├── ApiRequest.java      # API 请求体
 │       └── ApiResponse.java     # API 响应体
+├── command/                     # Skill/命令系统（Skill = type='prompt' 的 Command）
+│   ├── Command.java             # 命令接口（顶层抽象）
+│   ├── CommandType.java         # 命令类型枚举（PROMPT / BUILTIN）
+│   ├── CommandSource.java       # 命令来源枚举（BUNDLED / DISK / MCP / PLUGIN）
+│   ├── PromptCommand.java       # Skill 核心实现（type=prompt 的 Command）
+│   ├── CommandRegistry.java     # 命令注册中心（汇聚所有来源）
+│   ├── CommandRenderer.java     # 内容渲染器（变量替换 + Shell 预处理）
+│   └── loader/
+│       ├── SkillFrontmatter.java # YAML frontmatter 解析 POJO
+│       └── SkillLoader.java      # 磁盘 SKILL.md 扫描与解析
 ├── tool/
 │   ├── Tool.java                # 工具接口
 │   ├── ToolRegistry.java        # 工具注册中心
@@ -38,7 +50,8 @@ src/main/java/com/claudecode/
 │       ├── EditFileTool.java    # 文件编辑（字符串替换）
 │       ├── WriteFileTool.java   # 文件写入
 │       ├── GlobTool.java        # 文件名搜索
-│       └── GrepTool.java        # 文件内容搜索
+│       ├── GrepTool.java        # 文件内容搜索
+│       └── SkillTool.java       # Skill 执行入口（Tool ↔ Command 桥梁）
 ├── mcp/                         # MCP（Model Context Protocol）集成
 │   ├── McpManager.java          # MCP 子系统总管理器（生命周期编排）
 │   ├── McpToolAdapter.java      # 远程工具 → 本地 Tool 接口的适配器
@@ -101,6 +114,43 @@ java -jar target/claude-code-java-1.0-SNAPSHOT.jar --model your-model-name
                                                        ↓
                                                追加到对话历史 → 回到调用 API
 ```
+
+## Skill 系统
+
+支持通过 SKILL.md 文件定义自定义技能（Skill），让 LLM 按照预设的提示词执行特定任务。
+
+### 工作原理
+
+```
+启动时：扫描 ~/.claude-code-java/skills/ 和 .claude-code-java/skills/
+           ↓
+  解析 SKILL.md（YAML frontmatter + Markdown 正文）
+           ↓
+  注册到 CommandRegistry → 生成 Skill 列表注入系统提示词
+           ↓
+  用户 /name 触发 或 LLM 通过 SkillTool 自动调用
+           ↓
+  CommandRenderer 渲染（$ARGUMENTS 替换 + !`cmd` 预处理）
+           ↓
+  渲染后的提示词注入对话 → LLM 按指令执行
+```
+
+### 创建 Skill
+
+在 `~/.claude-code-java/skills/<name>/SKILL.md` 中创建：
+
+```markdown
+---
+description: 审查代码质量和效率
+allowed-tools:
+  - Read
+  - Bash
+---
+
+你是一个代码审查专家，请检查 $ARGUMENTS 中指定的文件...
+```
+
+启动后通过 `/name` 或让 LLM 自动调用。
 
 ## MCP（Model Context Protocol）集成
 
