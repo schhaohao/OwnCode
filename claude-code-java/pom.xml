@@ -47,6 +47,13 @@
             <version>3.25.1</version>
         </dependency>
 
+        <!-- SnakeYAML: YAML 解析库，用于解析 SKILL.md 的 frontmatter -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>2.2</version>
+        </dependency>
+
         <!-- JUnit 5: 单元测试框架 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

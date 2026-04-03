@@ -2,12 +2,14 @@ package com.claudecode;
 
 import com.claudecode.api.ClaudeApiClient;
 import com.claudecode.cli.Repl;
+import com.claudecode.command.CommandRegistry;
 import com.claudecode.core.AgentLoop;
 import com.claudecode.mcp.McpManager;
 import com.claudecode.mcp.config.McpConfigLoader;
 import com.claudecode.mcp.config.McpServerConfig;
 import com.claudecode.permission.PermissionManager;
 import com.claudecode.tool.ToolRegistry;
+import com.claudecode.tool.impl.SkillTool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -120,14 +122,27 @@ public class ClaudeCode {
                 mcpManager.initializeAndRegister(mcpConfigs, toolRegistry);
             }
 
+            // Skill 系统初始化：
+            // 1. 创建 CommandRegistry，扫描 ~/.claude/skills/ 和 .claude/skills/ 目录
+            // 2. 解析所有 SKILL.md 文件，注册为 PromptCommand
+            // 3. 创建 SkillTool（Skill 与 Tool 体系的桥梁）并注册到 ToolRegistry
+            //    这样 LLM 就可以通过标准的 tool_use 调用机制来触发 Skill
+            CommandRegistry commandRegistry = new CommandRegistry(workingDirectory);
+            commandRegistry.initialize();
+            toolRegistry.register(new SkillTool(commandRegistry));
+
             PermissionManager permissionManager = new PermissionManager();
 
+            // 创建 AgentLoop 时传入 CommandRegistry，
+            // 它会在 buildRequest() 中将 Skill 列表注入系统提示词
             AgentLoop agentLoop = new AgentLoop(
-                    apiClient, toolRegistry, permissionManager, systemPrompt);
+                    apiClient, toolRegistry, permissionManager,
+                    systemPrompt, commandRegistry);
 
-            // 5. 启动交互式命令行循环
+            // 6. 启动交互式命令行循环
             Repl repl = new Repl(agentLoop);
             repl.setConnectionInfo(model, baseUrl, apiKey);
+            repl.setCommandRegistry(commandRegistry);  // 注入 CommandRegistry，启用 /skill 路由
 
             // 注入 JLine LineReader 到 PermissionManager，避免 Scanner/JLine 抢 System.in
             permissionManager.setInputReader(prompt -> repl.readLine(prompt));

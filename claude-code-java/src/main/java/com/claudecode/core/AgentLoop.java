@@ -3,6 +3,7 @@ package com.claudecode.core;
 import com.claudecode.api.ClaudeApiClient;
 import com.claudecode.api.model.*;
 import com.claudecode.cli.TerminalRenderer;
+import com.claudecode.command.CommandRegistry;
 import com.claudecode.permission.PermissionManager;
 import com.claudecode.permission.PermissionManager.PermissionResult;
 import com.claudecode.tool.Tool;
@@ -86,6 +87,9 @@ public class AgentLoop {
     /** 系统提示（告诉 LLM 它的角色和行为规范） */
     private final String systemPrompt;
 
+    /** 命令/技能注册中心（管理所有 Skill，生成 Skill 列表注入系统提示词） */
+    private final CommandRegistry commandRegistry;
+
     /** 模型名称（显式传递给 API 请求） */
     private final String model;
 
@@ -99,7 +103,19 @@ public class AgentLoop {
                      ToolRegistry toolRegistry,
                      PermissionManager permissionManager,
                      String systemPrompt) {
-        this(apiClient, toolRegistry, permissionManager, systemPrompt,
+        this(apiClient, toolRegistry, permissionManager, systemPrompt, null,
+             new TerminalRenderer(), System.out::print);
+    }
+
+    /**
+     * 带 CommandRegistry 的便捷构造函数
+     */
+    public AgentLoop(ClaudeApiClient apiClient,
+                     ToolRegistry toolRegistry,
+                     PermissionManager permissionManager,
+                     String systemPrompt,
+                     CommandRegistry commandRegistry) {
+        this(apiClient, toolRegistry, permissionManager, systemPrompt, commandRegistry,
              new TerminalRenderer(), System.out::print);
     }
 
@@ -107,12 +123,14 @@ public class AgentLoop {
                      ToolRegistry toolRegistry,
                      PermissionManager permissionManager,
                      String systemPrompt,
+                     CommandRegistry commandRegistry,
                      TerminalRenderer renderer,
                      Consumer<String> outputCallback) {
         this.apiClient = apiClient;
         this.toolRegistry = toolRegistry;
         this.permissionManager = permissionManager;
         this.systemPrompt = systemPrompt;
+        this.commandRegistry = commandRegistry;
         this.model = apiClient.getDefaultModel();
         this.renderer = renderer;
         this.outputCallback = outputCallback;
@@ -208,12 +226,26 @@ public class AgentLoop {
     // ==================== 请求构建 ====================
 
     /**
-     * 组装 API 请求：system prompt + tool definitions + messages
+     * 组装 API 请求：system prompt + skill listing + tool definitions + messages
+     *
+     * 相比原版新增了 Skill 列表注入：
+     * 如果 CommandRegistry 中有注册的 Skill，会将它们的 name + description 列表
+     * 以 <system-reminder> 格式追加到系统提示词末尾。
+     * 这样 LLM 就能知道有哪些 Skill 可用，并在合适的时候主动调用 SkillTool。
      */
     private ApiRequest buildRequest() {
+        // 拼接系统提示词 + Skill 列表摘要
+        String fullSystemPrompt = systemPrompt;
+        if (commandRegistry != null) {
+            String skillListing = commandRegistry.buildSkillListing();
+            if (!skillListing.isEmpty()) {
+                fullSystemPrompt = systemPrompt + "\n" + skillListing;
+            }
+        }
+
         return ApiRequest.builder()
                 .model(model)
-                .system(systemPrompt)
+                .system(fullSystemPrompt)
                 .tools(toolRegistry.getAllDefinitions())
                 .messages(new ArrayList<>(history.getMessages()))
                 .build();
@@ -229,6 +261,10 @@ public class AgentLoop {
      *   2. 权限检查 → ALLOW/DENY/ASK
      *   3. 权限通过则执行工具
      *   4. 收集 ToolResultBlock
+     *
+     * 特殊处理：当工具名为 "Skill" 时，将返回结果包裹为 &lt;command-name&gt; 标签。
+     * 这个标签告诉 LLM：「这段内容是一个 Skill 的指令，请按照其中的指示执行」，
+     * 而不是普通的工具输出数据。
      */
     private List<ToolResultBlock> executeTools(List<ToolUseBlock> toolUses) {
         List<ToolResultBlock> results = new ArrayList<>();
@@ -252,6 +288,21 @@ public class AgentLoop {
 
             // 执行工具
             ToolResult result = toolRegistry.execute(toolName, toolUse.getInput());
+
+            // ---- Skill 结果特殊处理 ----
+            // 当工具是 SkillTool 且执行成功时，将渲染后的 Skill 内容包裹为 <command-name> 标签。
+            // 这个标签的作用：
+            // 1. 告诉 LLM 这是一个已加载的 Skill 指令（不是普通数据）
+            // 2. LLM 看到 <command-name> 标签后会直接遵循其中的指令，不会再重复调用 SkillTool
+            // 3. 与官方 Claude Code 的行为一致
+            if ("Skill".equals(toolName) && !result.isError()) {
+                String skillName = toolUse.getInput() != null
+                        ? String.valueOf(toolUse.getInput().get("skill"))
+                        : "unknown";
+                String wrapped = "<command-name>" + skillName + "</command-name>\n"
+                        + result.getContent();
+                result = ToolResult.success(wrapped);
+            }
 
             // 通过 TerminalRenderer 统一渲染执行结果
             renderer.renderToolResult(toolName, result);

@@ -9,6 +9,10 @@
 # Docs (独立仓库)
 docs/
 
+#skill
+skills/
+
+
 # Java / Maven build output
 **/target/
 *.class

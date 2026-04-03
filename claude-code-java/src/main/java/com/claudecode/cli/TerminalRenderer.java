@@ -187,6 +187,12 @@ public class TerminalRenderer {
 
     /**
      * 根据工具类型提取关键参数用于展示
+     *
+     * 每种工具有不同的「最重要参数」：
+     * - Bash → 要执行的命令
+     * - Read/Edit/Write → 目标文件路径
+     * - Glob/Grep → 搜索模式
+     * - Skill → 要调用的 Skill 名称
      */
     private String extractDetail(String toolName, Map<String, Object> input) {
         if (input == null) return null;
@@ -197,6 +203,7 @@ public class TerminalRenderer {
             case "Write":  return getStr(input, "file_path");
             case "Glob":
             case "Grep":   return getStr(input, "pattern");
+            case "Skill":  return getStr(input, "skill");
             default:       return null;
         }
     }
