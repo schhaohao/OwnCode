@@ -147,6 +147,61 @@ public class ToolRegistry {
         }
     }
 
+    /**
+     * 创建一个只包含指定工具的过滤副本
+     *
+     * <p>此方法用于 Skill 的 Fork 执行模式：当一个 Skill 声明了 {@code allowed-tools} 时，
+     * 子 Agent 只应该使用被授权的工具子集，而不是继承父 Agent 的全部工具。</p>
+     *
+     * <h3>工具名称匹配规则</h3>
+     * <ul>
+     *   <li>简单名称：{@code "Read"} → 精确匹配名为 "Read" 的工具</li>
+     *   <li>带参数限制的名称：{@code "Bash(npm run *)"} → 提取基础名称 "Bash" 进行匹配
+     *       （参数限制部分由权限系统处理，不影响工具的注册与否）</li>
+     * </ul>
+     *
+     * <h3>使用场景</h3>
+     * <pre>
+     * // Skill 的 SKILL.md 中声明：
+     * // allowed-tools:
+     * //   - Read
+     * //   - Bash(npm run *)
+     * //   - Grep
+     *
+     * List&lt;String&gt; allowedTools = command.getAllowedTools();
+     * ToolRegistry childRegistry = parentRegistry.createFilteredCopy(allowedTools);
+     * // childRegistry 只包含 Read, Bash, Grep 三个工具
+     * </pre>
+     *
+     * @param allowedToolNames 允许的工具名称列表，支持 "ToolName" 和 "ToolName(pattern)" 两种格式
+     * @return 新的 ToolRegistry 实例，只包含 allowedToolNames 中匹配到的工具；
+     *         如果 allowedToolNames 为空或 null，返回包含当前所有工具的完整副本
+     */
+    public ToolRegistry createFilteredCopy(java.util.List<String> allowedToolNames) {
+        ToolRegistry filtered = new ToolRegistry(this.workingDirectory);
+
+        // 如果未指定 allowedTools，继承父 Agent 的全部工具
+        if (allowedToolNames == null || allowedToolNames.isEmpty()) {
+            for (Tool tool : tools.values()) {
+                filtered.register(tool);
+            }
+            return filtered;
+        }
+
+        // 按名称过滤：提取基础工具名（去掉参数限制部分）
+        for (String allowedName : allowedToolNames) {
+            String baseName = allowedName.contains("(")
+                    ? allowedName.substring(0, allowedName.indexOf('(')).trim()
+                    : allowedName.trim();
+            Tool tool = this.getTool(baseName);
+            if (tool != null && !filtered.tools.containsKey(baseName)) {
+                filtered.register(tool);
+            }
+        }
+
+        return filtered;
+    }
+
     /** 已注册工具数量 */
     public int size() {
         return tools.size();

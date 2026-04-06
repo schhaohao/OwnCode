@@ -2,8 +2,10 @@ package com.claudecode;
 
 import com.claudecode.api.ClaudeApiClient;
 import com.claudecode.cli.Repl;
+import com.claudecode.cli.TerminalRenderer;
 import com.claudecode.command.CommandRegistry;
 import com.claudecode.core.AgentLoop;
+import com.claudecode.core.ForkExecutor;
 import com.claudecode.mcp.McpManager;
 import com.claudecode.mcp.config.McpConfigLoader;
 import com.claudecode.mcp.config.McpServerConfig;
@@ -125,19 +127,30 @@ public class ClaudeCode {
             // Skill 系统初始化：
             // 1. 创建 CommandRegistry，扫描 ~/.claude/skills/ 和 .claude/skills/ 目录
             // 2. 解析所有 SKILL.md 文件，注册为 PromptCommand
-            // 3. 创建 SkillTool（Skill 与 Tool 体系的桥梁）并注册到 ToolRegistry
-            //    这样 LLM 就可以通过标准的 tool_use 调用机制来触发 Skill
+            // 3. 创建 ForkExecutor（Skill Fork 模式的执行器，共享 apiClient/toolRegistry/permissionManager）
+            // 4. 创建 SkillTool（Skill 与 Tool 体系的桥梁，支持 Inline + Fork 两种模式）
+            //    并注册到 ToolRegistry，这样 LLM 就可以通过标准的 tool_use 调用机制来触发 Skill
             CommandRegistry commandRegistry = new CommandRegistry(workingDirectory);
             commandRegistry.initialize();
-            toolRegistry.register(new SkillTool(commandRegistry));
 
             PermissionManager permissionManager = new PermissionManager();
+            TerminalRenderer terminalRenderer = new TerminalRenderer();
 
-            // 创建 AgentLoop 时传入 CommandRegistry，
+            // 创建 ForkExecutor：Skill Fork 模式的核心执行器
+            // 它持有与主 AgentLoop 共享的依赖（apiClient, toolRegistry, permissionManager）
+            // 每次 fork 执行时，ForkExecutor 会利用这些依赖创建独立的子 AgentLoop
+            ForkExecutor forkExecutor = new ForkExecutor(
+                    apiClient, toolRegistry, permissionManager,
+                    terminalRenderer, System.out::print);
+
+            toolRegistry.register(new SkillTool(commandRegistry, forkExecutor));
+
+            // 创建 AgentLoop 时传入 CommandRegistry 和共享的 TerminalRenderer，
             // 它会在 buildRequest() 中将 Skill 列表注入系统提示词
             AgentLoop agentLoop = new AgentLoop(
                     apiClient, toolRegistry, permissionManager,
-                    systemPrompt, commandRegistry);
+                    systemPrompt, commandRegistry,
+                    terminalRenderer, System.out::print);
 
             // 6. 启动交互式命令行循环
             Repl repl = new Repl(agentLoop);

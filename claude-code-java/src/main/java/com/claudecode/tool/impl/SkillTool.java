@@ -3,6 +3,7 @@ package com.claudecode.tool.impl;
 import com.claudecode.command.CommandRegistry;
 import com.claudecode.command.CommandRenderer;
 import com.claudecode.command.PromptCommand;
+import com.claudecode.core.ForkExecutor;
 import com.claudecode.tool.Tool;
 import com.claudecode.tool.ToolResult;
 
@@ -57,15 +58,19 @@ import java.util.Map;
  *  Inline vs Fork
  * =============================================
  *
- * 当前版本只实现了 Inline 模式：
+ * 当前版本实现了 Inline 和 Fork 两种模式：
+ *
+ * Inline 模式（默认）：
  * - Skill 的渲染内容作为 ToolResult 返回
  * - AgentLoop 将其包裹为 <command-name> 标签注入对话
  * - LLM 在当前对话上下文中继续执行
  *
- * Fork 模式（P2 阶段）需要：
- * - 创建独立的子 AgentLoop
- * - Skill 内容作为子 Agent 的初始 prompt
- * - 子 Agent 独立执行，结果返回主对话
+ * Fork 模式：
+ * - 通过 {@link ForkExecutor} 创建独立的子 AgentLoop
+ * - Skill 渲染内容作为子 Agent 的初始 user message
+ * - 子 Agent 有独立的对话历史、上下文管理和 maxTurns 限制（默认 30 轮）
+ * - 子 Agent 执行完毕后，最终文本回复作为 ToolResult 返回主对话
+ * - 子 Agent 不传入 CommandRegistry，无法调用 Skill，避免递归 fork
  *
  * 设计参考：
  *   对应 Claude Code 源码 src/tools/SkillTool/SkillTool.ts（约 1100 行）
@@ -86,13 +91,40 @@ public class SkillTool implements Tool {
     private final CommandRenderer renderer;
 
     /**
-     * 构造 SkillTool
+     * Fork 执行器（可选）
+     *
+     * <p>当 Skill 的 context="fork" 时，通过此执行器创建独立子 Agent 执行。
+     * 如果为 null，则 fork 模式不可用，调用 fork Skill 时会返回错误。</p>
+     *
+     * @see ForkExecutor
+     */
+    private final ForkExecutor forkExecutor;
+
+    /**
+     * 构造 SkillTool（不支持 Fork 模式）
+     *
+     * <p>使用此构造函数创建的 SkillTool 只支持 Inline 模式。
+     * 如果遇到 fork 模式的 Skill，将返回错误信息。</p>
      *
      * @param commandRegistry 命令注册中心（不能为 null）
      */
     public SkillTool(CommandRegistry commandRegistry) {
+        this(commandRegistry, null);
+    }
+
+    /**
+     * 构造 SkillTool（完整版，支持 Inline + Fork 两种模式）
+     *
+     * <p>生产环境应使用此构造函数，传入 ForkExecutor 以支持 Fork 模式。
+     * ForkExecutor 由 {@link com.claudecode.ClaudeCode} 入口类组装并注入。</p>
+     *
+     * @param commandRegistry 命令注册中心（不能为 null）
+     * @param forkExecutor    Fork 执行器（可以为 null，为 null 时不支持 fork 模式）
+     */
+    public SkillTool(CommandRegistry commandRegistry, ForkExecutor forkExecutor) {
         this.commandRegistry = commandRegistry;
         this.renderer = new CommandRenderer();
+        this.forkExecutor = forkExecutor;
     }
 
     // ==================== Tool 接口实现 ====================
@@ -251,12 +283,29 @@ public class SkillTool implements Tool {
                     + "via /" + skillName + " command, not by the model.");
         }
 
-        // ---- 步骤 4：检查执行模式 ----
+        // ---- 步骤 4：检查执行模式并分发 ----
         if (command.isFork()) {
-            // Fork 模式：当前版本暂不支持，返回友好的错误信息
-            return ToolResult.error("Skill '" + skillName + "' requires fork execution mode, "
-                    + "which is not yet supported in this version. "
-                    + "Please use inline skills for now.");
+            // ---- Fork 模式：在独立子 Agent 中执行 ----
+            // Fork 模式将 Skill 内容发送到一个全新的子 AgentLoop，
+            // 子 Agent 有独立的对话历史和 token 预算，
+            // 执行完毕后，子 Agent 的最终文本回复作为 ToolResult 返回主对话。
+            //
+            // 前置条件：ForkExecutor 必须已注入（非 null）
+            if (forkExecutor == null) {
+                return ToolResult.error("Skill '" + skillName + "' requires fork execution mode, "
+                        + "but ForkExecutor is not available. "
+                        + "This is likely a configuration issue.");
+            }
+
+            try {
+                // 先渲染 Skill 内容（与 inline 模式相同的渲染逻辑）
+                String rendered = renderer.render(command, args);
+                // 委托 ForkExecutor 创建子 Agent 执行
+                return forkExecutor.execute(command, rendered);
+            } catch (Exception e) {
+                return ToolResult.error("Failed to execute fork skill '" + skillName + "': "
+                        + e.getMessage());
+            }
         }
 
         // ---- 步骤 5：渲染 Skill 内容 ----

@@ -66,8 +66,8 @@ import java.util.function.Consumer;
  */
 public class AgentLoop {
 
-    /** 最大循环轮次，防止无限循环 */
-    private static final int MAX_TURNS = 50;
+    /** 主 Agent 默认最大循环轮次 */
+    private static final int DEFAULT_MAX_TURNS = 50;
 
     /** Claude API 通信客户端 */
     private final ClaudeApiClient apiClient;
@@ -99,12 +99,23 @@ public class AgentLoop {
     /** 文本增量回调（实时输出到终端） */
     private final Consumer<String> outputCallback;
 
+    /**
+     * 最大循环轮次（实例级别，支持子 Agent 配置不同的值）
+     *
+     * <p>主 Agent 默认 50 轮，Fork 子 Agent 通常设置为更小的值（如 30 轮），
+     * 以限制子 Agent 的 token 预算和执行范围。</p>
+     */
+    private final int maxTurns;
+
+    /**
+     * 最简构造函数（无 CommandRegistry，默认渲染器和输出回调）
+     */
     public AgentLoop(ClaudeApiClient apiClient,
                      ToolRegistry toolRegistry,
                      PermissionManager permissionManager,
                      String systemPrompt) {
         this(apiClient, toolRegistry, permissionManager, systemPrompt, null,
-             new TerminalRenderer(), System.out::print);
+             new TerminalRenderer(), System.out::print, DEFAULT_MAX_TURNS);
     }
 
     /**
@@ -116,9 +127,12 @@ public class AgentLoop {
                      String systemPrompt,
                      CommandRegistry commandRegistry) {
         this(apiClient, toolRegistry, permissionManager, systemPrompt, commandRegistry,
-             new TerminalRenderer(), System.out::print);
+             new TerminalRenderer(), System.out::print, DEFAULT_MAX_TURNS);
     }
 
+    /**
+     * 带自定义渲染器和输出回调的构造函数（maxTurns 使用默认值）
+     */
     public AgentLoop(ClaudeApiClient apiClient,
                      ToolRegistry toolRegistry,
                      PermissionManager permissionManager,
@@ -126,6 +140,33 @@ public class AgentLoop {
                      CommandRegistry commandRegistry,
                      TerminalRenderer renderer,
                      Consumer<String> outputCallback) {
+        this(apiClient, toolRegistry, permissionManager, systemPrompt, commandRegistry,
+             renderer, outputCallback, DEFAULT_MAX_TURNS);
+    }
+
+    /**
+     * 全参数构造函数 — 支持完整配置，包括自定义 maxTurns
+     *
+     * <p>此构造函数主要供 {@link com.claudecode.core.ForkExecutor} 在创建子 Agent 时使用，
+     * 子 Agent 通常需要比主 Agent 更小的 maxTurns 值来限制执行范围和 token 预算。</p>
+     *
+     * @param apiClient        Claude API 通信客户端（父子 Agent 共享同一实例）
+     * @param toolRegistry     工具注册中心（子 Agent 可能使用过滤后的工具集）
+     * @param permissionManager 权限管理器（父子 Agent 共享同一实例）
+     * @param systemPrompt     系统提示词（子 Agent 使用专用的简化提示词）
+     * @param commandRegistry  命令/技能注册中心（子 Agent 通常传 null，避免递归 fork）
+     * @param renderer         终端渲染器
+     * @param outputCallback   文本增量回调
+     * @param maxTurns         最大循环轮次（主 Agent 默认 50，子 Agent 建议 30）
+     */
+    public AgentLoop(ClaudeApiClient apiClient,
+                     ToolRegistry toolRegistry,
+                     PermissionManager permissionManager,
+                     String systemPrompt,
+                     CommandRegistry commandRegistry,
+                     TerminalRenderer renderer,
+                     Consumer<String> outputCallback,
+                     int maxTurns) {
         this.apiClient = apiClient;
         this.toolRegistry = toolRegistry;
         this.permissionManager = permissionManager;
@@ -134,6 +175,7 @@ public class AgentLoop {
         this.model = apiClient.getDefaultModel();
         this.renderer = renderer;
         this.outputCallback = outputCallback;
+        this.maxTurns = maxTurns;
         this.history = new ConversationHistory();
         this.contextManager = new ContextManager();
     }
@@ -162,7 +204,7 @@ public class AgentLoop {
         history.addUserMessage(userInput);
 
         int turns = 0;
-        while (turns < MAX_TURNS) {
+        while (turns < maxTurns) {
             // 2a. 上下文窗口检查与压缩
             if (contextManager.isNearLimit(history)) {
                 System.err.println("[Context] Approaching token limit, compacting history...");
@@ -219,8 +261,8 @@ public class AgentLoop {
         }
 
         // 达到最大轮次限制
-        System.err.println("[Warning] Reached maximum turns (" + MAX_TURNS + "). Stopping agent loop.");
-        return "[Agent loop stopped] Reached maximum turns (" + MAX_TURNS + ").";
+        System.err.println("[Warning] Reached maximum turns (" + maxTurns + "). Stopping agent loop.");
+        return "[Agent loop stopped] Reached maximum turns (" + maxTurns + ").";
     }
 
     // ==================== 请求构建 ====================
@@ -339,7 +381,64 @@ public class AgentLoop {
 
     // ==================== Getter ====================
 
+    /**
+     * 获取对话历史（供 Repl 清空历史等操作使用）
+     */
     public ConversationHistory getHistory() {
         return history;
+    }
+
+    /**
+     * 获取 Claude API 客户端
+     *
+     * <p>供 {@link ForkExecutor} 创建子 AgentLoop 时复用同一个 API 连接。</p>
+     */
+    public ClaudeApiClient getApiClient() {
+        return apiClient;
+    }
+
+    /**
+     * 获取工具注册中心
+     *
+     * <p>供 {@link ForkExecutor} 创建子 Agent 的过滤工具集时使用。</p>
+     */
+    public ToolRegistry getToolRegistry() {
+        return toolRegistry;
+    }
+
+    /**
+     * 获取权限管理器
+     *
+     * <p>供 {@link ForkExecutor} 创建子 AgentLoop 时共享同一个权限管理器。</p>
+     */
+    public PermissionManager getPermissionManager() {
+        return permissionManager;
+    }
+
+    /**
+     * 获取系统提示词
+     *
+     * <p>供 {@link ForkExecutor} 构建子 Agent 的系统提示词时作为参考或基础。</p>
+     */
+    public String getSystemPrompt() {
+        return systemPrompt;
+    }
+
+    /**
+     * 获取终端渲染器
+     *
+     * <p>供 {@link ForkExecutor} 创建子 AgentLoop 时复用终端渲染能力。</p>
+     */
+    public TerminalRenderer getRenderer() {
+        return renderer;
+    }
+
+    /**
+     * 获取文本输出回调
+     *
+     * <p>供 {@link ForkExecutor} 创建子 AgentLoop 时复用输出通道。</p>
+     */
+    public Consumer<String> getOutputCallback() {
+        return outputCallback;
     }
 }
