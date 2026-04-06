@@ -12,6 +12,7 @@ import com.claudecode.tool.ToolResult;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -212,13 +213,27 @@ public class AgentLoop {
             }
 
             // 2b. 构建请求并流式调用 Claude API
+            // 包装回调：在第一个 text_delta 到来时自动输出 ◆ 前缀
+            AtomicBoolean textStarted = new AtomicBoolean(false);
+            Consumer<String> wrappedCallback = text -> {
+                if (textStarted.compareAndSet(false, true)) {
+                    renderer.renderTextPrefix();
+                }
+                outputCallback.accept(text);
+            };
+
             ApiRequest request = buildRequest();
             ApiResponse response;
             try {
-                response = apiClient.sendMessageStream(request, outputCallback);
+                response = apiClient.sendMessageStream(request, wrappedCallback);
             } catch (Exception e) {
                 System.err.println("\n[Error] API call failed: " + e.getMessage());
                 throw e;
+            }
+
+            // 流式文本结束后输出换行
+            if (textStarted.get()) {
+                renderer.renderTextSuffix();
             }
 
             // 2c. 将 assistant 响应追加到对话历史

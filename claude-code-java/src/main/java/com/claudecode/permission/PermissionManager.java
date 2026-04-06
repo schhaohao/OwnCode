@@ -207,20 +207,26 @@ public class PermissionManager {
      */
     public boolean promptUser(String toolName, Map<String, Object> input) {
         String detail = extractDisplayDetail(toolName, input);
+        boolean color = System.console() != null;
+        String Y = color ? "\033[33m" : "";  // yellow
+        String C = color ? "\033[36m" : "";  // cyan
+        String B = color ? "\033[1m"  : "";  // bold
+        String G = color ? "\033[90m" : "";  // gray
+        String R = color ? "\033[0m"  : "";  // reset
 
         // 显示审批提示框
         System.out.println();
-        System.out.println("┌──────────────────────────────────────────────┐");
-        System.out.printf( "│  Tool: %-38s│%n", toolName);
+        System.out.println(C + "  ┌──────────────────────────────────────────────┐" + R);
+        System.out.printf( C + "  │" + R + "  Tool: " + B + "%-38s" + R + C + "│" + R + "%n", toolName);
         if (detail != null) {
-            // 如果 detail 太长则截断显示
             String displayDetail = detail.length() > 36 ? detail.substring(0, 33) + "..." : detail;
-            int width = 38 - getDetailLabel(toolName).length() - 2;
-            System.out.printf("│  %s: %-" + width + "s│%n", getDetailLabel(toolName), displayDetail);
+            String label = getDetailLabel(toolName);
+            int width = 38 - label.length() - 2;
+            System.out.printf(C + "  │" + R + "  %s: " + G + "%-" + width + "s" + R + C + "│" + R + "%n", label, displayDetail);
         }
-        System.out.println("│                                              │");
-        System.out.println("│  Allow? (y)es / (n)o / (a)lways             │");
-        System.out.println("└──────────────────────────────────────────────┘");
+        System.out.println(C + "  │                                              │" + R);
+        System.out.println(C + "  │" + R + "  Allow? " + Y + "(y)" + R + "es / " + Y + "(n)" + R + "o / " + Y + "(a)" + R + "lways" + "             " + C + "│" + R);
+        System.out.println(C + "  └──────────────────────────────────────────────┘" + R);
 
         String answer = inputReader.apply("  > ").trim().toLowerCase();
 

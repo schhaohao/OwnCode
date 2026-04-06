@@ -78,9 +78,6 @@ import java.nio.file.Paths;
  */
 public class Repl {
 
-    /** 命令行提示符 */
-    private static final String PROMPT = "claude> ";
-
     /** 历史文件目录 */
     private static final String HISTORY_DIR = ".claude-code-java";
 
@@ -143,7 +140,7 @@ public class Repl {
             while (running) {
                 String input;
                 try {
-                    input = lineReader.readLine(PROMPT);
+                    input = lineReader.readLine(renderer.getPrompt());
                 } catch (UserInterruptException e) {
                     System.out.println();
                     continue;
@@ -280,12 +277,11 @@ public class Repl {
         if (commandRegistry != null && commandRegistry.size() > 0) {
             java.util.List<PromptCommand> skills = commandRegistry.getUserInvocableCommands();
             if (!skills.isEmpty()) {
-                System.out.println("  " + "\033[1m" + "Available skills:" + "\033[0m");
+                renderer.renderSectionHeader("Available skills:");
                 for (PromptCommand skill : skills) {
                     String desc = skill.description() != null ? skill.description() : "";
                     if (desc.length() > 60) desc = desc.substring(0, 57) + "...";
-                    System.out.println("  " + "\033[36m" + "/" + skill.name() + "\033[0m"
-                            + (desc.isEmpty() ? "" : " - " + desc));
+                    renderer.renderSkillItem(skill.name(), desc);
                 }
                 System.out.println();
             }
