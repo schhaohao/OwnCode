@@ -2,90 +2,139 @@
 
 # Claude Code Java
 
-### 用 Java 复刻 Claude Code CLI 的一次完整工程实践
+### A Java-built Claude Code style coding agent, rebuilt for learning
 
-一个面向学习与拆解的 AI Coding Agent 项目：支持流式 Claude API、Agent Loop、Tool Use、Skill 系统、MCP 集成，以及现在已经接入的记忆系统与分层上下文压缩。
+<p>
+  <a href="https://schhaohao.github.io/docs/">
+    <img src="https://img.shields.io/badge/docs-online-111111?style=for-the-badge" alt="Docs">
+  </a>
+  <img src="https://img.shields.io/badge/java-11+-ea2d2e?style=for-the-badge" alt="Java 11+">
+  <img src="https://img.shields.io/badge/status-active-1f883d?style=for-the-badge" alt="Status">
+  <img src="https://img.shields.io/badge/focus-agent%20engineering-0969da?style=for-the-badge" alt="Focus">
+</p>
 
-[学习文档](https://schhaohao.github.io/docs/) · [源码目录](./claude-code-java)
+一个面向学习、拆解和复现的 AI Coding Agent 项目。它不只是“调用 Claude API”，而是把一条真正的 Agent 工程链路完整做出来：
+
+**Agent Loop、Tool Use、Streaming、Permission、Skill、MCP，以及现在已经接入的 Memory System。**
+
+<p>
+  <a href="https://schhaohao.github.io/docs/">学习文档</a>
+  ·
+  <a href="./claude-code-java">源码目录</a>
+</p>
 
 </div>
 
 ---
 
-## 项目亮点
+## Why This Repo
 
-这不是一个“调用一下大模型接口”的小 Demo，而是一个尽量接近真实 Coding Agent 工作流的 Java 项目。
+很多 AI 项目把关键机制藏在抽象后面，能跑，但不方便学。
 
-它已经具备这些核心能力：
+这个仓库的目标刚好相反：
 
-- `Agent Loop`：模型思考、请求工具、接收结果、继续推理，直到任务完成
-- `Streaming API`：基于 OkHttp + SSE 的流式 Claude 响应处理
-- `Tool System`：文件读写、Shell、搜索等内置工具
-- `Permission Layer`：需要风险控制的操作先做人类审批
-- `Skill System`：用 `SKILL.md` 驱动“按剧本执行”的高阶任务
-- `MCP Integration`：把外部 MCP Server 透明适配为本地工具
-- `Memory System`：持久化记忆、Session Memory、动态 system prompt、三层上下文压缩
+> 把一个 Claude Code 风格的 Coding Agent 拆开来做，让你能真正看懂它为什么这样工作。
 
-如果你在找一个适合学习这些主题的 Java 项目：
+如果你想系统学习这些主题，这个项目会非常合适：
 
-- Agent 工程如何落地
-- Claude 风格 Tool Use 协议怎么接
-- 命令行 AI 助手怎么组织模块
-- Memory / Context Compression 怎么做
-
-这个仓库就是为这件事准备的。
+- Agent Loop 如何驱动“推理 → 调工具 → 回灌结果 → 继续推理”
+- Claude Messages API 和 Tool Use 协议怎么接
+- 命令行 AI 助手如何做权限控制与终端交互
+- Skill 系统如何把 Prompt 工程变成可复用能力
+- MCP 如何把外部 server 透明接成工具
+- Memory / Context Compression 如何进入真实主循环
 
 ---
 
-## 现在已经实现了什么
+## Highlights
 
-### 1. Coding Agent 核心闭环
+### `Agent Loop`
+
+模型不是一次性吐答案，而是在循环里持续工作：
 
 ```text
 用户输入
   -> 构建请求(system + tools + messages)
   -> 调 Claude API
-  -> 解析 stop_reason
+  -> 检查 stop_reason
   -> 如需 tool_use 则执行工具
   -> 把 tool_result 回灌给模型
-  -> 继续循环直到 end_turn
+  -> 继续循环直到任务完成
 ```
 
-### 2. 记忆系统
+### `Streaming API`
 
-这次版本里，项目已经加入了完整的记忆骨架：
+基于 OkHttp + SSE，支持流式响应拼装与实时终端输出，而不是等整段内容生成完再一次性展示。
+
+### `Tool System`
+
+内置了 Coding Agent 最常用的基础工具能力：
+
+- 文件读取
+- 文件编辑
+- 文件写入
+- Shell 执行
+- 文件名搜索
+- 内容搜索
+
+### `Permission Layer`
+
+把高风险操作放进 Human-in-the-loop 审批链，避免“模型能调用工具”直接等于“模型能随便执行操作”。
+
+### `Skill System`
+
+通过 `SKILL.md` 定义可复用技能，让模型不只是临场发挥，而是可以“按剧本执行”。
+
+### `MCP Integration`
+
+支持接入外部 MCP Server，把远程能力统一适配为本地工具。
+
+### `Memory System`
+
+这是当前版本最重要的升级之一，已经具备：
 
 - 持久化记忆：`MEMORY.md + frontmatter Markdown 文件`
-- 相关记忆检索：按当前用户请求挑选 relevant memories
-- 指令文件加载：多层 `CLAUDE.md`
-- Session Memory：长会话中的结构化摘要
-- 上下文压缩：
+- 相关记忆检索：按用户请求挑选 relevant memories
+- 多层 `CLAUDE.md` 指令加载
+- Session Memory：长会话结构化摘要
+- 三层上下文压缩：
   - `L1` 微压缩旧 `tool_result`
   - `L2` 用 Session Memory 替换中期历史
   - `L3` 用摘要折叠更老历史
 
-### 3. 面向扩展的设计
+---
 
-项目里有不少地方已经按“后续可继续长大”的方式设计好了：
+## What’s Implemented
 
-- `MemoryManager` 作为记忆门面
-- `ConversationSummaryGenerator` 允许模型摘要与规则摘要自由替换
-- `McpToolAdapter` 用适配器模式把远程工具接进本地体系
-- `CommandRegistry + SkillTool` 把 Skill 与 Tool 体系桥接起来
+当前项目已经具备一条完整的 Coding Agent 基础链路：
+
+- `ClaudeApiClient + StreamAssembler`
+- `AgentLoop`
+- `ConversationHistory + ContextManager`
+- `ToolRegistry + Built-in Tools`
+- `PermissionManager`
+- `CommandRegistry + SkillTool`
+- `McpManager + McpToolAdapter`
+- `MemoryManager + memory/*`
+
+同时，记忆层已经不是“旁路工具类”，而是主流程的一部分，会参与：
+
+- 请求前动态 system prompt 构建
+- 请求前上下文压缩
+- 工具调用计数
+- 回合结束后的 Session Memory 刷新
 
 ---
 
-## 仓库结构
+## Project Layout
 
-这个仓库的核心源码位于：
+核心源码位于：
 
 ```text
 OwnCode/claude-code-java/
 ```
 
-### `claude-code-java/`
-
-Java 源码项目，核心目录大致如下：
+主要模块如下：
 
 ```text
 claude-code-java/src/main/java/com/claudecode/
@@ -97,16 +146,16 @@ claude-code-java/src/main/java/com/claudecode/
 ├── mcp/                         # MCP 客户端、管理器、适配器
 ├── permission/                  # 权限系统
 ├── cli/                         # REPL 与终端渲染
-└── memory/                      # 记忆系统（本次新增重点）
+└── memory/                      # 记忆系统（重点模块）
 ```
 
-配套学习文档在线地址：
+完整讲解请直接看在线文档：
 
 - [https://schhaohao.github.io/docs/](https://schhaohao.github.io/docs/)
 
 ---
 
-## 架构速览
+## Architecture Snapshot
 
 ```mermaid
 graph TB
@@ -157,25 +206,25 @@ graph TB
 
 ---
 
-## 快速开始
+## Quick Start
 
-### 1. 构建项目
+### 1. Build
 
 ```bash
 cd claude-code-java
 mvn clean package
 ```
 
-### 2. 配置 API Key
+### 2. Configure API access
 
 当前代码读取的是这些环境变量：
 
 ```bash
 export CCJ_API_KEY="your-api-key"
-export CCJ_BASE_URL="https://your-api-host.com"   # 可选
+export CCJ_BASE_URL="https://your-api-host.com"   # optional
 ```
 
-也可以通过命令行传：
+也可以通过命令行传入：
 
 ```bash
 java -jar target/claude-code-java-1.0-SNAPSHOT.jar \
@@ -184,13 +233,13 @@ java -jar target/claude-code-java-1.0-SNAPSHOT.jar \
   --model claude-sonnet-4-6
 ```
 
-### 3. 直接运行
+### 3. Run
 
 ```bash
 java -jar target/claude-code-java-1.0-SNAPSHOT.jar
 ```
 
-### 4. 运行测试
+### 4. Test
 
 ```bash
 mvn test
@@ -198,11 +247,11 @@ mvn test
 
 ---
 
-## Skill 系统
+## Skill System
 
 项目支持通过 `SKILL.md` 定义高阶技能，让模型按预设提示词执行任务。
 
-工作流如下：
+工作流大致如下：
 
 ```text
 启动时扫描 ~/.claude-code-java/skills/ 和 .claude-code-java/skills/
@@ -227,7 +276,7 @@ allowed-tools:
 
 ---
 
-## MCP 集成
+## MCP Integration
 
 项目支持通过 MCP 协议接入外部工具服务器，把远程能力无缝接入 Agent。
 
@@ -245,7 +294,7 @@ allowed-tools:
 }
 ```
 
-设计上的几个关键点：
+几个关键设计点：
 
 - 适配器模式：远程工具被转换为本地 `Tool`
 - 命名规范：`mcp__<serverName>__<toolName>`
@@ -254,7 +303,7 @@ allowed-tools:
 
 ---
 
-## 记忆系统是这次最重要的升级
+## Memory System
 
 如果你之前看过这个项目，现在最值得重新关注的就是记忆层。
 
@@ -277,23 +326,19 @@ allowed-tools:
 - 分层压缩
 - 跨会话记忆基础设施
 
-详细讲解请直接看文档站里的：
+详细讲解请看：
 
 - [记忆系统架构](https://schhaohao.github.io/docs/architecture/memory-system)
 
 ---
 
-## 为什么这个项目值得学
+## Why It’s Worth Studying
 
-很多 AI 项目会直接把“魔法”藏起来。
-
-这个项目的目标恰好相反：
-
-> 把 Agent 的关键机制拆开，让你能真正看懂。
+这个项目最有意思的地方，不只是“它做了什么”，而是“它把关键机制写出来了”。
 
 你可以在这里系统学习：
 
-- Claude Messages API 的请求/响应模型
+- Claude Messages API 的请求与响应模型
 - SSE 流式处理
 - Tool Use 协议
 - 命令行交互式 Agent
@@ -304,19 +349,19 @@ allowed-tools:
 
 ---
 
-## 接下来最自然的演进方向
+## Next Directions
 
-如果继续往下做，这几个方向会非常有意思：
+如果继续往下做，这几个方向会非常自然：
 
-- 增加 memory 相关 tool，让模型主动保存/删除记忆
+- 增加 memory 相关 tool，让模型主动保存 / 删除记忆
 - 把关键词检索升级成 LLM rerank
-- 把 SessionMemoryExtractor 升级成模型提取
+- 把 `SessionMemoryExtractor` 升级成模型提取
 - 支持 `CLAUDE.md` 的 `@include`
 - 做更细粒度的 memory 配置开关
 
 ---
 
-## 技术栈
+## Stack
 
 - Java 11
 - OkHttp + SSE
@@ -328,6 +373,6 @@ allowed-tools:
 
 ---
 
-## 许可证
+## License
 
 MIT
