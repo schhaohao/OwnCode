@@ -1,10 +1,9 @@
 package com.claudecode.core;
 
-import com.claudecode.api.model.ContentBlock;
 import com.claudecode.api.model.Message;
-import com.claudecode.api.model.TextBlock;
 import com.claudecode.api.model.ToolResultBlock;
-import com.claudecode.api.model.ToolUseBlock;
+import com.claudecode.api.model.ApiResponse;
+import com.claudecode.memory.util.TokenEstimator;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,6 +28,8 @@ import java.util.List;
 public class ConversationHistory {
 
     private final List<Message> messages = new ArrayList<>();
+    private int lastUsageMessageIndex = -1;
+    private int lastUsageTotalTokens = -1;
 
     /**
      * 添加一条纯文本的 user 消息
@@ -49,6 +50,25 @@ public class ConversationHistory {
     public void addAssistantMessage(Message message) {
         checkRoleAlternation("assistant");
         messages.add(message);
+    }
+
+    /**
+     * 添加 assistant 响应，并记录 usage 作为后续 token 估算的精确锚点。
+     *
+     * <p>这是记忆系统新增的关键辅助方法。Claude Code 原始实现并不会完全依赖
+     * 粗略字符估算，而是尽量复用最近一次 API 返回的 usage。这样越到会话后期，
+     * 估算越稳定。</p>
+     */
+    public void addAssistantResponse(ApiResponse response) {
+        if (response == null) {
+            throw new IllegalArgumentException("response must not be null");
+        }
+
+        addAssistantMessage(response.toMessage());
+        if (response.getUsage() != null) {
+            lastUsageMessageIndex = messages.size() - 1;
+            lastUsageTotalTokens = response.getUsage().getTotalTokens();
+        }
     }
 
     /**
@@ -78,6 +98,8 @@ public class ConversationHistory {
      */
     public void clear() {
         messages.clear();
+        lastUsageMessageIndex = -1;
+        lastUsageTotalTokens = -1;
     }
 
     /**
@@ -88,27 +110,7 @@ public class ConversationHistory {
      * 用于上下文窗口管理，判断是否需要压缩。
      */
     public int estimateTokenCount() {
-        int totalChars = 0;
-        for (Message msg : messages) {
-            for (ContentBlock block : msg.getContent()) {
-                if (block instanceof TextBlock) {
-                    totalChars += ((TextBlock) block).getText().length();
-                } else if (block instanceof ToolResultBlock) {
-                    String content = ((ToolResultBlock) block).getContent();
-                    if (content != null) {
-                        totalChars += content.length();
-                    }
-                }
-                else if (block instanceof ToolUseBlock) {
-                    ToolUseBlock toolUse = (ToolUseBlock) block;
-                    totalChars += toolUse.getName().length();
-                    if (toolUse.getInput() != null) {
-                        totalChars += toolUse.getInput().toString().length();
-                    }
-                }
-            }
-        }
-        return totalChars / 4;
+        return TokenEstimator.estimate(this);
     }
 
     /**
@@ -129,6 +131,16 @@ public class ConversationHistory {
     void replaceAll(List<Message> newMessages) {
         messages.clear();
         messages.addAll(newMessages);
+        lastUsageMessageIndex = -1;
+        lastUsageTotalTokens = -1;
+    }
+
+    public int getLastUsageMessageIndex() {
+        return lastUsageMessageIndex;
+    }
+
+    public int getLastUsageTotalTokens() {
+        return lastUsageTotalTokens;
     }
 
     // ==================== 内部方法 ====================

@@ -6,6 +6,7 @@ import com.claudecode.cli.TerminalRenderer;
 import com.claudecode.command.CommandRegistry;
 import com.claudecode.core.AgentLoop;
 import com.claudecode.core.ForkExecutor;
+import com.claudecode.memory.MemoryManager;
 import com.claudecode.mcp.McpManager;
 import com.claudecode.mcp.config.McpConfigLoader;
 import com.claudecode.mcp.config.McpServerConfig;
@@ -16,6 +17,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.*;
+import java.nio.file.Path;
 import java.util.Map;
 
 /**
@@ -135,6 +137,7 @@ public class ClaudeCode {
 
             PermissionManager permissionManager = new PermissionManager();
             TerminalRenderer terminalRenderer = new TerminalRenderer();
+            MemoryManager memoryManager = new MemoryManager(Path.of(workingDirectory), apiClient);
 
             // 创建 ForkExecutor：Skill Fork 模式的核心执行器
             // 它持有与主 AgentLoop 共享的依赖（apiClient, toolRegistry, permissionManager）
@@ -150,6 +153,7 @@ public class ClaudeCode {
             AgentLoop agentLoop = new AgentLoop(
                     apiClient, toolRegistry, permissionManager,
                     systemPrompt, commandRegistry,
+                    memoryManager,
                     terminalRenderer, System.out::print);
 
             // 6. 启动交互式命令行循环

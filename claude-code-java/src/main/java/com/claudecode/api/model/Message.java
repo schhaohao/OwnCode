@@ -186,6 +186,19 @@ public class Message {
         return content;
     }
 
+    /**
+     * 基于当前消息复制一个“内容不同、角色相同”的新消息。
+     *
+     * <p>这个方法主要给上下文压缩器使用。压缩器经常只想替换某几个 block
+     * （例如把旧 tool_result 改成占位符），但不希望重新手写一遍 role 判断。</p>
+     *
+     * @param newContent 新的 content blocks
+     * @return 与当前消息 role 相同、content 替换后的新消息
+     */
+    public Message withContent(List<ContentBlock> newContent) {
+        return new Message(role, new ArrayList<>(newContent));
+    }
+
     // ==================== 自定义反序列化器 ====================
 
     /**

@@ -202,6 +202,13 @@ public class ApiResponse {
 
         public int getInputTokens() { return inputTokens; }
         public int getOutputTokens() { return outputTokens; }
+
+        /**
+         * 返回输入与输出 token 之和，便于作为上下文估算的“精确锚点”。
+         */
+        public int getTotalTokens() {
+            return inputTokens + outputTokens;
+        }
     }
 
     // ==================== Builder ====================

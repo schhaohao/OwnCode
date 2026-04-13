@@ -4,6 +4,7 @@ import com.claudecode.api.ClaudeApiClient;
 import com.claudecode.api.model.*;
 import com.claudecode.cli.TerminalRenderer;
 import com.claudecode.command.CommandRegistry;
+import com.claudecode.memory.MemoryManager;
 import com.claudecode.permission.PermissionManager;
 import com.claudecode.permission.PermissionManager.PermissionResult;
 import com.claudecode.tool.Tool;
@@ -88,6 +89,9 @@ public class AgentLoop {
     /** 系统提示（告诉 LLM 它的角色和行为规范） */
     private final String systemPrompt;
 
+    /** 记忆系统门面（可选）。 */
+    private final MemoryManager memoryManager;
+
     /** 命令/技能注册中心（管理所有 Skill，生成 Skill 列表注入系统提示词） */
     private final CommandRegistry commandRegistry;
 
@@ -116,7 +120,7 @@ public class AgentLoop {
                      PermissionManager permissionManager,
                      String systemPrompt) {
         this(apiClient, toolRegistry, permissionManager, systemPrompt, null,
-             new TerminalRenderer(), System.out::print, DEFAULT_MAX_TURNS);
+             null, new TerminalRenderer(), System.out::print, DEFAULT_MAX_TURNS);
     }
 
     /**
@@ -128,7 +132,7 @@ public class AgentLoop {
                      String systemPrompt,
                      CommandRegistry commandRegistry) {
         this(apiClient, toolRegistry, permissionManager, systemPrompt, commandRegistry,
-             new TerminalRenderer(), System.out::print, DEFAULT_MAX_TURNS);
+             null, new TerminalRenderer(), System.out::print, DEFAULT_MAX_TURNS);
     }
 
     /**
@@ -142,7 +146,22 @@ public class AgentLoop {
                      TerminalRenderer renderer,
                      Consumer<String> outputCallback) {
         this(apiClient, toolRegistry, permissionManager, systemPrompt, commandRegistry,
-             renderer, outputCallback, DEFAULT_MAX_TURNS);
+             null, renderer, outputCallback, DEFAULT_MAX_TURNS);
+    }
+
+    /**
+     * 带记忆系统的便捷构造函数（maxTurns 使用默认值）。
+     */
+    public AgentLoop(ClaudeApiClient apiClient,
+                     ToolRegistry toolRegistry,
+                     PermissionManager permissionManager,
+                     String systemPrompt,
+                     CommandRegistry commandRegistry,
+                     MemoryManager memoryManager,
+                     TerminalRenderer renderer,
+                     Consumer<String> outputCallback) {
+        this(apiClient, toolRegistry, permissionManager, systemPrompt, commandRegistry,
+             memoryManager, renderer, outputCallback, DEFAULT_MAX_TURNS);
     }
 
     /**
@@ -168,17 +187,31 @@ public class AgentLoop {
                      TerminalRenderer renderer,
                      Consumer<String> outputCallback,
                      int maxTurns) {
+        this(apiClient, toolRegistry, permissionManager, systemPrompt, commandRegistry,
+             null, renderer, outputCallback, maxTurns);
+    }
+
+    public AgentLoop(ClaudeApiClient apiClient,
+                     ToolRegistry toolRegistry,
+                     PermissionManager permissionManager,
+                     String systemPrompt,
+                     CommandRegistry commandRegistry,
+                     MemoryManager memoryManager,
+                     TerminalRenderer renderer,
+                     Consumer<String> outputCallback,
+                     int maxTurns) {
         this.apiClient = apiClient;
         this.toolRegistry = toolRegistry;
         this.permissionManager = permissionManager;
         this.systemPrompt = systemPrompt;
         this.commandRegistry = commandRegistry;
+        this.memoryManager = memoryManager;
         this.model = apiClient.getDefaultModel();
         this.renderer = renderer;
         this.outputCallback = outputCallback;
         this.maxTurns = maxTurns;
         this.history = new ConversationHistory();
-        this.contextManager = new ContextManager();
+        this.contextManager = memoryManager != null ? memoryManager.getContextManager() : new ContextManager();
     }
 
     // ==================== 核心循环 ====================
@@ -201,13 +234,19 @@ public class AgentLoop {
      * @return LLM 最终的文本回复
      */
     public String run(String userInput) throws Exception {
+        if (memoryManager != null) {
+            memoryManager.beginTurn();
+        }
+
         // 1. 将用户输入追加到对话历史
         history.addUserMessage(userInput);
 
         int turns = 0;
         while (turns < maxTurns) {
             // 2a. 上下文窗口检查与压缩
-            if (contextManager.isNearLimit(history)) {
+            if (memoryManager != null) {
+                memoryManager.beforeApiCall(history);
+            } else if (contextManager.isNearLimit(history)) {
                 System.err.println("[Context] Approaching token limit, compacting history...");
                 contextManager.compact(history);
             }
@@ -222,7 +261,7 @@ public class AgentLoop {
                 outputCallback.accept(text);
             };
 
-            ApiRequest request = buildRequest();
+            ApiRequest request = buildRequest(userInput);
             ApiResponse response;
             try {
                 response = apiClient.sendMessageStream(request, wrappedCallback);
@@ -237,23 +276,32 @@ public class AgentLoop {
             }
 
             // 2c. 将 assistant 响应追加到对话历史
-            history.addAssistantMessage(response.toMessage());
+            history.addAssistantResponse(response);
 
             // 2d. 检查 stop_reason，决定是否继续循环
             String stopReason = response.getStopReason();
 
             if ("end_turn".equals(stopReason) || "stop_sequence".equals(stopReason)) {
                 // LLM 认为任务完成 → 退出循环
+                if (memoryManager != null) {
+                    memoryManager.afterTurn(history);
+                }
                 return response.getTextContent();
             }
 
             if ("max_tokens".equals(stopReason)) {
                 // 输出被截断
+                if (memoryManager != null) {
+                    memoryManager.afterTurn(history);
+                }
                 return response.getTextContent() + "\n[Warning] Response was truncated (max_tokens reached).";
             }
 
             if (!"tool_use".equals(stopReason)) {
                 // 未知的 stop_reason，安全退出
+                if (memoryManager != null) {
+                    memoryManager.afterTurn(history);
+                }
                 return response.getTextContent();
             }
 
@@ -271,6 +319,9 @@ public class AgentLoop {
 
             // 将工具结果追加到对话历史（作为 user 消息）
             history.addToolResults(results);
+            if (memoryManager != null) {
+                memoryManager.afterTurn(history);
+            }
 
             turns++;
         }
@@ -290,11 +341,14 @@ public class AgentLoop {
      * 以 <system-reminder> 格式追加到系统提示词末尾。
      * 这样 LLM 就能知道有哪些 Skill 可用，并在合适的时候主动调用 SkillTool。
      */
-    private ApiRequest buildRequest() {
+    private ApiRequest buildRequest(String latestUserInput) {
         // 拼接系统提示词 + Skill 列表摘要
-        String fullSystemPrompt = systemPrompt;
-        if (commandRegistry != null) {
-            String skillListing = commandRegistry.buildSkillListing();
+        String skillListing = commandRegistry != null ? commandRegistry.buildSkillListing() : "";
+        String fullSystemPrompt;
+        if (memoryManager != null) {
+            fullSystemPrompt = memoryManager.buildSystemPrompt(systemPrompt, skillListing, latestUserInput);
+        } else {
+            fullSystemPrompt = systemPrompt;
             if (!skillListing.isEmpty()) {
                 fullSystemPrompt = systemPrompt + "\n" + skillListing;
             }
@@ -328,6 +382,10 @@ public class AgentLoop {
 
         for (ToolUseBlock toolUse : toolUses) {
             String toolName = toolUse.getName();
+
+            if (memoryManager != null) {
+                memoryManager.onToolCall();
+            }
 
             // 通过 TerminalRenderer 统一渲染工具调用信息
             renderer.renderToolCall(toolName, toolUse.getInput());
