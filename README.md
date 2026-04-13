@@ -1,143 +1,218 @@
+<div align="center">
+
 # Claude Code Java
 
-用 Java 复刻的简易版 Claude Code CLI —— 一个基于 Claude API 的交互式编程助手。
+### 用 Java 复刻 Claude Code CLI 的一次完整工程实践
 
-> 📖 **学习文档**：[https://schhaohao.github.io/docs/](https://schhaohao.github.io/docs/)
+一个面向学习与拆解的 AI Coding Agent 项目：支持流式 Claude API、Agent Loop、Tool Use、Skill 系统、MCP 集成，以及现在已经接入的记忆系统与分层上下文压缩。
 
-## 技术栈
+[学习文档](https://schhaohao.github.io/docs/) · [源码目录](./claude-code-java)
 
-- Java 11
-- OkHttp + SSE（API 通信 & 流式响应）
-- Jackson（JSON 序列化）
-- JLine3（终端交互）
-- JUnit 5（单元测试）
+</div>
 
-## 项目结构
+---
 
+## 项目亮点
+
+这不是一个“调用一下大模型接口”的小 Demo，而是一个尽量接近真实 Coding Agent 工作流的 Java 项目。
+
+它已经具备这些核心能力：
+
+- `Agent Loop`：模型思考、请求工具、接收结果、继续推理，直到任务完成
+- `Streaming API`：基于 OkHttp + SSE 的流式 Claude 响应处理
+- `Tool System`：文件读写、Shell、搜索等内置工具
+- `Permission Layer`：需要风险控制的操作先做人类审批
+- `Skill System`：用 `SKILL.md` 驱动“按剧本执行”的高阶任务
+- `MCP Integration`：把外部 MCP Server 透明适配为本地工具
+- `Memory System`：持久化记忆、Session Memory、动态 system prompt、三层上下文压缩
+
+如果你在找一个适合学习这些主题的 Java 项目：
+
+- Agent 工程如何落地
+- Claude 风格 Tool Use 协议怎么接
+- 命令行 AI 助手怎么组织模块
+- Memory / Context Compression 怎么做
+
+这个仓库就是为这件事准备的。
+
+---
+
+## 现在已经实现了什么
+
+### 1. Coding Agent 核心闭环
+
+```text
+用户输入
+  -> 构建请求(system + tools + messages)
+  -> 调 Claude API
+  -> 解析 stop_reason
+  -> 如需 tool_use 则执行工具
+  -> 把 tool_result 回灌给模型
+  -> 继续循环直到 end_turn
 ```
-src/main/java/com/claudecode/
+
+### 2. 记忆系统
+
+这次版本里，项目已经加入了完整的记忆骨架：
+
+- 持久化记忆：`MEMORY.md + frontmatter Markdown 文件`
+- 相关记忆检索：按当前用户请求挑选 relevant memories
+- 指令文件加载：多层 `CLAUDE.md`
+- Session Memory：长会话中的结构化摘要
+- 上下文压缩：
+  - `L1` 微压缩旧 `tool_result`
+  - `L2` 用 Session Memory 替换中期历史
+  - `L3` 用摘要折叠更老历史
+
+### 3. 面向扩展的设计
+
+项目里有不少地方已经按“后续可继续长大”的方式设计好了：
+
+- `MemoryManager` 作为记忆门面
+- `ConversationSummaryGenerator` 允许模型摘要与规则摘要自由替换
+- `McpToolAdapter` 用适配器模式把远程工具接进本地体系
+- `CommandRegistry + SkillTool` 把 Skill 与 Tool 体系桥接起来
+
+---
+
+## 仓库结构
+
+这个仓库的核心源码位于：
+
+```text
+OwnCode/claude-code-java/
+```
+
+### `claude-code-java/`
+
+Java 源码项目，核心目录大致如下：
+
+```text
+claude-code-java/src/main/java/com/claudecode/
 ├── ClaudeCode.java              # 程序入口
-├── core/
-│   ├── AgentLoop.java           # 核心 Agent 循环（思考→工具调用→反馈）
-│   ├── ConversationHistory.java # 对话历史管理
-│   └── ContextManager.java      # 上下文窗口管理 & 压缩
-├── api/
-│   ├── ClaudeApiClient.java     # Claude API 客户端
-│   ├── StreamAssembler.java     # SSE 流式响应解析
-│   └── model/                   # API 数据模型
-│       ├── ContentBlock.java    # 内容块基类（TextBlock / ToolUseBlock / ToolResultBlock）
-│       ├── Message.java         # 对话消息
-│       ├── ToolDefinition.java  # 工具定义
-│       ├── ApiRequest.java      # API 请求体
-│       └── ApiResponse.java     # API 响应体
-├── command/                     # Skill/命令系统（Skill = type='prompt' 的 Command）
-│   ├── Command.java             # 命令接口（顶层抽象）
-│   ├── CommandType.java         # 命令类型枚举（PROMPT / BUILTIN）
-│   ├── CommandSource.java       # 命令来源枚举（BUNDLED / DISK / MCP / PLUGIN）
-│   ├── PromptCommand.java       # Skill 核心实现（type=prompt 的 Command）
-│   ├── CommandRegistry.java     # 命令注册中心（汇聚所有来源）
-│   ├── CommandRenderer.java     # 内容渲染器（变量替换 + Shell 预处理）
-│   └── loader/
-│       ├── SkillFrontmatter.java # YAML frontmatter 解析 POJO
-│       └── SkillLoader.java      # 磁盘 SKILL.md 扫描与解析
-├── tool/
-│   ├── Tool.java                # 工具接口
-│   ├── ToolRegistry.java        # 工具注册中心
-│   ├── ToolResult.java          # 工具执行结果
-│   └── impl/                    # 内置工具实现
-│       ├── BashTool.java        # Shell 命令执行
-│       ├── ReadFileTool.java    # 文件读取
-│       ├── EditFileTool.java    # 文件编辑（字符串替换）
-│       ├── WriteFileTool.java   # 文件写入
-│       ├── GlobTool.java        # 文件名搜索
-│       ├── GrepTool.java        # 文件内容搜索
-│       └── SkillTool.java       # Skill 执行入口（Tool ↔ Command 桥梁）
-├── mcp/                         # MCP（Model Context Protocol）集成
-│   ├── McpManager.java          # MCP 子系统总管理器（生命周期编排）
-│   ├── McpToolAdapter.java      # 远程工具 → 本地 Tool 接口的适配器
-│   ├── client/
-│   │   ├── McpTransport.java    # 传输层抽象接口
-│   │   ├── StdioTransport.java  # stdio 传输实现（子进程 stdin/stdout）
-│   │   ├── McpClient.java       # 单个 MCP Server 的客户端（握手/发现/调用）
-│   │   ├── JsonRpcRequest.java  # JSON-RPC 2.0 请求消息
-│   │   └── JsonRpcResponse.java # JSON-RPC 2.0 响应消息
-│   └── config/
-│       ├── McpConfigLoader.java # 配置加载器（settings.json → McpServerConfig）
-│       └── McpServerConfig.java # 单个 MCP Server 配置数据模型
-├── permission/
-│   ├── PermissionManager.java   # 权限管理
-│   └── PermissionRule.java      # 权限规则
-└── cli/
-    ├── Repl.java                # 交互式命令行
-    └── TerminalRenderer.java    # 终端输出渲染
+├── core/                        # Agent Loop / 对话历史 / 上下文管理
+├── api/                         # Claude API 客户端与响应模型
+├── tool/                        # Tool 接口、注册中心、内置工具
+├── command/                     # Skill / Command 系统
+├── mcp/                         # MCP 客户端、管理器、适配器
+├── permission/                  # 权限系统
+├── cli/                         # REPL 与终端渲染
+└── memory/                      # 记忆系统（本次新增重点）
 ```
 
-## 构建 & 运行
+配套学习文档在线地址：
+
+- [https://schhaohao.github.io/docs/](https://schhaohao.github.io/docs/)
+
+---
+
+## 架构速览
+
+```mermaid
+graph TB
+    subgraph UI["CLI"]
+        Repl["Repl"]
+        Render["TerminalRenderer"]
+    end
+
+    subgraph Core["Core Engine"]
+        Loop["AgentLoop"]
+        History["ConversationHistory"]
+        Ctx["ContextManager"]
+    end
+
+    subgraph Memory["Memory Layer"]
+        MM["MemoryManager"]
+        PMS["PersistentMemoryStore"]
+        SM["SessionMemory"]
+        IL["InstructionLoader"]
+    end
+
+    subgraph Infra["Infrastructure"]
+        Api["ClaudeApiClient + StreamAssembler"]
+        Tools["ToolRegistry"]
+        Perm["PermissionManager"]
+        Skills["CommandRegistry + SkillTool"]
+    end
+
+    subgraph MCP["MCP"]
+        McpMgr["McpManager"]
+        McpAdapter["McpToolAdapter"]
+    end
+
+    Repl --> Loop
+    Loop --> History
+    Loop --> Ctx
+    Loop --> MM
+    Loop --> Api
+    Loop --> Tools
+    Loop --> Perm
+    Loop --> Skills
+    MM --> PMS
+    MM --> SM
+    MM --> IL
+    McpMgr --> McpAdapter
+    McpAdapter --> Tools
+```
+
+---
+
+## 快速开始
+
+### 1. 构建项目
 
 ```bash
-# 编译
-mvn clean compile
-
-# 运行测试
-mvn test
-
-# 打包
-mvn clean package
-
-# 运行（需要设置 API Key）
 cd claude-code-java
-mvn clean package -DskipTests
+mvn clean package
+```
 
-# 指定你自己的 API 地址
+### 2. 配置 API Key
+
+当前代码读取的是这些环境变量：
+
+```bash
+export CCJ_API_KEY="your-api-key"
+export CCJ_BASE_URL="https://your-api-host.com"   # 可选
+```
+
+也可以通过命令行传：
+
+```bash
 java -jar target/claude-code-java-1.0-SNAPSHOT.jar \
+  --api-key your-api-key \
   --base-url https://your-api-host.com \
-  --api-key your-key \
-  --model your-model-name
-
-# 或者用环境变量
-export ANTHROPIC_BASE_URL="https://your-api-host.com"
-export ANTHROPIC_API_KEY="your-key"
-java -jar target/claude-code-java-1.0-SNAPSHOT.jar --model your-model-name
-
+  --model claude-sonnet-4-6
 ```
 
-## 核心原理
+### 3. 直接运行
 
+```bash
+java -jar target/claude-code-java-1.0-SNAPSHOT.jar
 ```
-用户输入 → 构建请求(system + tools + messages) → 调用 Claude API
-                                                       ↓
-              ┌─── stop_reason == "end_turn" ← 检查响应
-              ↓                                        ↓
-         输出结果                          stop_reason == "tool_use"
-         等待下次输入                                   ↓
-                                               执行工具，收集结果
-                                                       ↓
-                                               追加到对话历史 → 回到调用 API
+
+### 4. 运行测试
+
+```bash
+mvn test
 ```
+
+---
 
 ## Skill 系统
 
-支持通过 SKILL.md 文件定义自定义技能（Skill），让 LLM 按照预设的提示词执行特定任务。
+项目支持通过 `SKILL.md` 定义高阶技能，让模型按预设提示词执行任务。
 
-### 工作原理
+工作流如下：
 
-```
-启动时：扫描 ~/.claude-code-java/skills/ 和 .claude-code-java/skills/
-           ↓
-  解析 SKILL.md（YAML frontmatter + Markdown 正文）
-           ↓
-  注册到 CommandRegistry → 生成 Skill 列表注入系统提示词
-           ↓
-  用户 /name 触发 或 LLM 通过 SkillTool 自动调用
-           ↓
-  CommandRenderer 渲染（$ARGUMENTS 替换 + !`cmd` 预处理）
-           ↓
-  渲染后的提示词注入对话 → LLM 按指令执行
+```text
+启动时扫描 ~/.claude-code-java/skills/ 和 .claude-code-java/skills/
+  -> 解析 SKILL.md
+  -> 注册到 CommandRegistry
+  -> 生成 skill listing 注入 system prompt
+  -> 用户通过 /name 或模型通过 SkillTool 调用
 ```
 
-### 创建 Skill
-
-在 `~/.claude-code-java/skills/<name>/SKILL.md` 中创建：
+一个最简单的 Skill 示例：
 
 ```markdown
 ---
@@ -150,31 +225,13 @@ allowed-tools:
 你是一个代码审查专家，请检查 $ARGUMENTS 中指定的文件...
 ```
 
-启动后通过 `/name` 或让 LLM 自动调用。
+---
 
-## MCP（Model Context Protocol）集成
+## MCP 集成
 
-本项目支持通过 MCP 协议接入外部工具服务器，扩展 Agent 的能力边界。
+项目支持通过 MCP 协议接入外部工具服务器，把远程能力无缝接入 Agent。
 
-### 工作原理
-
-```
-启动时：settings.json → 加载 MCP Server 配置
-           ↓
-  ProcessBuilder 启动子进程（stdio 通信）
-           ↓
-  JSON-RPC 握手（initialize + notifications/initialized）
-           ↓
-  tools/list 发现远程工具
-           ↓
-  McpToolAdapter 适配为 Tool 接口 → 注册到 ToolRegistry
-           ↓
-  AgentLoop 透明使用（无法区分内置工具和 MCP 工具）
-```
-
-### 配置方式
-
-在 `~/.claude-code-java/settings.json` 或项目目录下 `.claude-code-java/settings.json` 中配置：
+配置示例：
 
 ```json
 {
@@ -188,12 +245,89 @@ allowed-tools:
 }
 ```
 
-项目级配置优先于用户级配置，`env` 值支持 `${ENV_VAR}` 环境变量插值。
+设计上的几个关键点：
 
-### 关键设计
+- 适配器模式：远程工具被转换为本地 `Tool`
+- 命名规范：`mcp__<serverName>__<toolName>`
+- 安全优先：MCP 工具默认需要用户审批
+- 容错隔离：单个 MCP Server 失败不影响整体启动
 
-- **适配器模式**：`McpToolAdapter` 将远程 MCP 工具适配为本地 `Tool` 接口，AgentLoop 零感知
-- **命名规范**：MCP 工具名格式为 `mcp__<serverName>__<toolName>`（与 Claude Code 官方一致）
-- **安全第一**：所有 MCP 工具默认需要用户审批（Human-in-the-loop）
-- **容错隔离**：单个 Server 连接失败不影响其他 Server 和整体启动
-- **进程管理**：JVM 退出时通过 ShutdownHook 清理所有 MCP 子进程
+---
+
+## 记忆系统是这次最重要的升级
+
+如果你之前看过这个项目，现在最值得重新关注的就是记忆层。
+
+当前实现里已经有：
+
+- `MemoryManager`
+- `PersistentMemoryStore`
+- `MemoryIndex`
+- `RelevantMemoryRetriever`
+- `InstructionLoader`
+- `SessionMemory`
+- `SessionMemoryExtractor`
+- `TokenEstimator`
+- `ConversationSummaryGenerator`
+
+它们共同让 Agent 具备了更接近真实 Claude Code 的能力：
+
+- 动态上下文构建
+- 长会话状态沉淀
+- 分层压缩
+- 跨会话记忆基础设施
+
+详细讲解请直接看文档站里的：
+
+- [记忆系统架构](https://schhaohao.github.io/docs/architecture/memory-system)
+
+---
+
+## 为什么这个项目值得学
+
+很多 AI 项目会直接把“魔法”藏起来。
+
+这个项目的目标恰好相反：
+
+> 把 Agent 的关键机制拆开，让你能真正看懂。
+
+你可以在这里系统学习：
+
+- Claude Messages API 的请求/响应模型
+- SSE 流式处理
+- Tool Use 协议
+- 命令行交互式 Agent
+- 权限系统
+- Skill 与 Prompt 工程
+- MCP 集成
+- Memory / Context Compression
+
+---
+
+## 接下来最自然的演进方向
+
+如果继续往下做，这几个方向会非常有意思：
+
+- 增加 memory 相关 tool，让模型主动保存/删除记忆
+- 把关键词检索升级成 LLM rerank
+- 把 SessionMemoryExtractor 升级成模型提取
+- 支持 `CLAUDE.md` 的 `@include`
+- 做更细粒度的 memory 配置开关
+
+---
+
+## 技术栈
+
+- Java 11
+- OkHttp + SSE
+- Jackson
+- JLine3
+- JUnit 5
+- VitePress
+- Mermaid
+
+---
+
+## 许可证
+
+MIT
